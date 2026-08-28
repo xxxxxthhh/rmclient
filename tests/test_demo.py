@@ -5,6 +5,7 @@ demo 是给公开 README 截图和陌生人试玩用的门面，坏了不会有�
 """
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -75,7 +76,7 @@ def test_the_dataset_carries_no_personal_traces(cloud):
         "Papers", "On Computable Numbers", "A Mathematical Theory of Communication",
         "Notes", "Calculus Notes", "Reading Journal", "Sketchbook",
         "Draft Outline", "Old Syllabus",
-    }
+    }, "公开截图数据集：改名字之前先确认没有真实书名混进来"
     assert all(name.isascii() for name in names)
 
 
@@ -193,6 +194,23 @@ def test_the_resurrection_case_fires_once_and_only_once(client):
 def test_creating_a_folder_works_and_shows_up_as_a_target(client):
     assert client.post("/api/folders", data={"name": "Essays", "parent": ""}).status_code == 200
     assert "Essays" in [f["path"] for f in client.get("/api/folders").json()["folders"]]
+
+
+# ---- 入口 ----------------------------------------------------------
+
+
+def test_the_readme_command_actually_starts(tmp_path):
+    """按 README 写的那条命令跑真文件，而且从别的目录跑。
+
+    上面的用例都是 importlib 直接加载模块，绕过了脚本自己的 import 路径——
+    脚本导入链断了它们照样绿。这里跑的是真入口：--help 之前整个模块已经导完了。
+    """
+    result = subprocess.run(
+        [sys.executable, str(REPO / "scripts" / "demo_serve.py"), "--help"],
+        cwd=tmp_path, capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--port" in result.stdout and "8001" in result.stdout
 
 
 # ---- 零网络 --------------------------------------------------------

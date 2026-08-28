@@ -31,7 +31,8 @@ import httpx
 import uvicorn
 from fastapi import Request
 
-# 仓库根进 sys.path：本脚本要借 tests/ 里的 .rm 构造器。
+# 仓库根进 sys.path：本脚本要借 tests/ 里的 .rm 构造器。可编辑安装下 .pth 已经
+# 把仓库根放进去了，但那是构建后端的实现细节——不赌它，自己插一份。
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from rmscene import scene_items as si  # noqa: E402
