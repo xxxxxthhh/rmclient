@@ -11,6 +11,7 @@ from rmclient.render import (
     X_OFFSET,
     Page,
     Stroke,
+    original_bytes,
     page_to_svg,
     pages_to_pdf,
     parse_rmdoc,
@@ -150,3 +151,33 @@ def test_pdf_streams_are_compressed_and_carry_the_strokes():
 def test_pdf_of_an_empty_notebook_is_still_a_one_page_pdf():
     pdf = pages_to_pdf([])
     assert pdf.startswith(b"%PDF") and b"/Count 1" in pdf
+
+
+# ---- 原件取回 ------------------------------------------------------
+
+
+def test_original_bytes_unpacks_an_epub():
+    from tests.fixtures import tiny_epub
+
+    payload = tiny_epub("Real Book")
+    data, ext = original_bytes(rmdoc({}, file_type="epub", payload=payload))
+    assert (data, ext) == (payload, "epub")
+
+
+def test_original_bytes_unpacks_a_pdf():
+    from tests.fixtures import tiny_pdf
+
+    payload = tiny_pdf()
+    data, ext = original_bytes(rmdoc({}, file_type="pdf", payload=payload))
+    assert (data, ext) == (payload, "pdf")
+
+
+def test_original_bytes_gives_the_whole_package_for_a_notebook():
+    book = rmdoc({"p": rm_page([])})
+    assert original_bytes(book) == (book, "rmdoc")
+
+
+def test_original_bytes_falls_back_to_the_package_when_the_member_is_missing():
+    # 声明了 epub 但包里没有对应成员——给整包，别 500。
+    book = rmdoc({}, file_type="epub")
+    assert original_bytes(book) == (book, "rmdoc")

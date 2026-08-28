@@ -508,3 +508,35 @@ def test_tree_page_has_the_batch_bar_and_no_checkbox_for_locked_rows(web):
     html = web[0].get("/tree").text
     assert 'id="batchbar"' in html and "批量移动" in html and "批量删除" in html
     assert "if (node.locked || !allowed) return null;" in html  # 信箱/回收站没有勾选框
+
+
+# ---- 原件下载（只读）----------------------------------------------
+
+
+def test_download_unpacks_an_epub_under_its_visible_name(preview_web):
+    client, _, _ = preview_web
+    r = client.get("/api/download/loose")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/epub+zip"
+    assert "filename*=UTF-8''Loose.epub" in r.headers["content-disposition"]
+    assert r.content.startswith(b"PK")  # 原 epub 字节，不是整包
+
+
+def test_download_gives_a_notebook_as_rmdoc(preview_web):
+    client, _, _ = preview_web
+    r = client.get("/api/download/b1")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+    assert "Book%20One.rmdoc" in r.headers["content-disposition"]
+
+
+def test_download_of_a_mailbox_document_is_allowed_and_read_only(preview_web):
+    client, seen, _ = preview_web
+    assert client.get("/api/download/mb-doc").status_code == 200
+    assert {r.method for r in seen} == {"GET"}
+
+
+def test_download_refuses_a_folder_and_an_unknown_id(preview_web):
+    client, _, _ = preview_web
+    assert client.get("/api/download/books").status_code == 400
+    assert client.get("/api/download/ghost").status_code == 404

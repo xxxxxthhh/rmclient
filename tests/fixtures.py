@@ -239,8 +239,12 @@ def rm_page(lines) -> bytes:
     return buf.getvalue()
 
 
-def rmdoc(pages: dict, file_type: str = "notebook", listed=None, doc_id: str = "doc-uuid") -> bytes:
-    """一本 .rmdoc：{page_id: .rm 字节}，listed 是 .content 里的页序（可含已删页）。"""
+def rmdoc(pages: dict, file_type: str = "notebook", listed=None, doc_id: str = "doc-uuid",
+          payload: bytes | None = None) -> bytes:
+    """一本 .rmdoc：{page_id: .rm 字节}，listed 是 .content 里的页序（可含已删页）。
+
+    payload 给 epub/pdf 用：包里那份原件的成员名是 UUID + 后缀，不是可见名。
+    """
     import io
 
     entries = listed if listed is not None else [{"id": pid} for pid in pages]
@@ -256,6 +260,8 @@ def rmdoc(pages: dict, file_type: str = "notebook", listed=None, doc_id: str = "
         z.writestr(f"{doc_id}.metadata", json.dumps({"visibleName": "Synthetic"}))
         for page_id, data in pages.items():
             z.writestr(f"{doc_id}/{page_id}.rm", data)
+        if payload is not None:
+            z.writestr(f"{doc_id}.{file_type}", payload)
     return buf.getvalue()
 
 
@@ -268,7 +274,7 @@ def preview_handler(pages: int = 2):
                                      color=si.PenColor.BLACK)])
         for i in range(pages)
     })
-    not_a_notebook = rmdoc({}, file_type="epub")
+    not_a_notebook = rmdoc({}, file_type="epub", payload=tiny_epub("Original"))
     exports = {"b1": notebook, "mb-doc": notebook, "loose": not_a_notebook}
 
     def handler(request: httpx.Request) -> httpx.Response:

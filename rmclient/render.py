@@ -79,6 +79,21 @@ def rmdoc_content(data: bytes) -> dict:
     raise ValueError("no .content in this rmdoc")
 
 
+def original_bytes(data: bytes) -> tuple[bytes, str]:
+    """原件取回：epub/pdf 从包里取原字节，其余（notebook 等）整包回 .rmdoc。
+
+    按**扩展名**匹配 zip 成员——包里的文件名是 UUID，不是可见名。声明了 epub/pdf
+    但包里找不到对应成员时退回整包，不报错：拿到手的总比 500 强。
+    """
+    file_type = (rmdoc_content(data).get("fileType") or "").lower()
+    if file_type in ("epub", "pdf"):
+        with zipfile.ZipFile(BytesIO(data)) as z:
+            for name in z.namelist():
+                if name.lower().endswith("." + file_type):
+                    return z.read(name), file_type
+    return data, "rmdoc"
+
+
 def parse_rmdoc(data: bytes) -> Notebook:
     """解析整本。非 notebook 返回空页列表，由调用方给「不支持预览」。"""
     content = rmdoc_content(data)

@@ -29,7 +29,7 @@ from .manage import (
 )
 from .models import Folder, PathError, Tree, find, mailbox_ids, walk
 from .push import DuplicateName, push
-from .render import Notebook, page_to_svg, pages_to_pdf, parse_rmdoc
+from .render import Notebook, original_bytes, page_to_svg, pages_to_pdf, parse_rmdoc
 from .validate import ValidationError
 
 app = FastAPI(title="rmclient")
@@ -209,17 +209,23 @@ _CACHE_SIZE = 4
 _notebooks: dict[tuple[str, str], Notebook] = {}
 
 
-def _load(client: RmClient, doc_id: str) -> tuple[str, Notebook]:
-    """返回 (可见名, 解析好的本子)。
+def _doc_node(client: RmClient, doc_id: str):
+    """树上的那份文档条目。
 
-    这是**唯一接受信箱 id 的路由族** —— 只读导出正是 SPEC M3 的验收路径，
-    锁只针对写操作。这里从头到尾只有 GET。
+    预览与下载是**仅有的接受信箱 id 的路由** —— 只读导出正是 SPEC M3 的验收路径，
+    锁只针对写操作。这两条路上从头到尾只有 GET。
     """
     node = find(client.list_tree().entries, doc_id)
     if node is None:
         raise HTTPException(404, {"reason": "not_found", "message": f"{doc_id} not in tree"})
     if isinstance(node, Folder):
-        raise HTTPException(400, {"reason": "invalid", "message": "folders have no preview"})
+        raise HTTPException(400, {"reason": "invalid", "message": "folders are not documents"})
+    return node
+
+
+def _load(client: RmClient, doc_id: str) -> tuple[str, Notebook]:
+    """返回 (可见名, 解析好的本子)。"""
+    node = _doc_node(client, doc_id)
     key = (doc_id, node.last_modified)
     notebook = _notebooks.get(key)
     if notebook is None:
@@ -268,6 +274,26 @@ def api_preview_pdf(doc_id: str, client: RmClient = Depends(get_client)) -> Resp
     return Response(
         pages_to_pdf(notebook.pages),
         media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
+
+
+_MEDIA = {"epub": "application/epub+zip", "pdf": "application/pdf", "rmdoc": "application/zip"}
+
+
+@app.get("/api/download/{doc_id}")
+def api_download(doc_id: str, client: RmClient = Depends(get_client)) -> Response:
+    """原件取回：按 rmdoc 里 `.content` 的 fileType 分派，epub/pdf 给原字节，其余给整包。
+
+    信箱内的文档也能下（只读）。已知边界：整份要在内存里过一遍，而且导出还压着
+    120s 读超时与 Cloudflare 边缘 100MB 上限（CLAUDE.md 纪律 6）——大文件会撞。
+    """
+    node = _doc_node(client, doc_id)
+    payload, ext = original_bytes(client.export_rmdoc(doc_id))
+    filename = quote(f"{node.name}.{ext}")
+    return Response(
+        payload,
+        media_type=_MEDIA.get(ext, "application/octet-stream"),
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
     )
 
