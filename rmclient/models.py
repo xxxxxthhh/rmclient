@@ -219,3 +219,19 @@ def resolve_path(entries: Iterable[Node], path: str) -> Folder:
         level = current.children
     assert current is not None
     return current
+
+
+def subtree_ids(entries: Iterable[Node], node_id: str) -> list[str]:
+    """节点自己 + 整棵子树的所有 id（深度优先，父在子前）。"""
+    node = find(entries, node_id)
+    if node is None:
+        raise PathError(f"{node_id} not in tree", [])
+    return [n.id for _, n in walk([node])]
+
+
+def is_descendant(entries: Iterable[Node], node_id: str, candidate_id: str) -> bool:
+    """candidate_id 是不是 node_id 自己或它的子孙。
+
+    把一个目录移进它自己的子孙里会把整棵子树甩飞，移动前必须拦。
+    """
+    return candidate_id in set(subtree_ids(entries, node_id))

@@ -10,12 +10,14 @@ from rmclient.models import (
     deepest_first,
     exclude_mailbox,
     find,
+    is_descendant,
     mailbox_ids,
     mailbox_roots,
     parse_tree,
     parse_tree_entry,
     parse_write_response,
     resolve_path,
+    subtree_ids,
     walk,
 )
 
@@ -220,3 +222,23 @@ def test_children_of_root_and_folder():
     assert [n.id for n in children_of(entries, "books")] == ["nested-mb", "b1"]
     with pytest.raises(PathError, match="not a folder"):
         children_of(entries, "b1")
+
+
+# ---- 子树 ----------------------------------------------------------
+
+
+def test_subtree_ids_includes_the_node_itself():
+    assert subtree_ids(tree().entries, "books") == ["books", "nested-mb", "nested-doc", "b1"]
+    assert subtree_ids(tree().entries, "loose") == ["loose"]
+
+
+def test_subtree_ids_refuses_an_unknown_id():
+    with pytest.raises(PathError, match="not in tree"):
+        subtree_ids(tree().entries, "ghost")
+
+
+def test_is_descendant_covers_self_and_children():
+    entries = tree().entries
+    assert is_descendant(entries, "books", "books") is True
+    assert is_descendant(entries, "books", "nested-doc") is True
+    assert is_descendant(entries, "books", "loose") is False
