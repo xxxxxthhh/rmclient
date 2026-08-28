@@ -17,6 +17,10 @@ PASSWORD_FILE = _PAPERPAL / "secrets/rmfakecloud_password"
 
 _USER_KEY = "RMFAKECLOUD_USER"
 
+# 本地状态（删除记录）。仓库内的 var/ 已在 .gitignore，不进 git。
+VAR_DIR = Path(__file__).resolve().parent.parent / "var"
+DELETED_FILE = VAR_DIR / "deleted.json"
+
 
 @dataclass(frozen=True)
 class Credentials:

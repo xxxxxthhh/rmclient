@@ -3,3 +3,4 @@ spike/out/
 .env
 secrets/
 .venv/
+var/
