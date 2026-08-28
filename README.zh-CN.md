@@ -133,6 +133,42 @@ rmclient 依赖的端点，以及每个端点各自的坑。完整证据在
 - 每个写操作都会重读一次文档树；个人库够用，大库没做优化。
 - 回收站只展示，不做还原和清空。
 
+## 一路是怎么走过来的
+
+每一轮都对真实服务器验证过才开下一轮；契约结论都在
+[`spike/REPORT.md`](spike/REPORT.md)。
+
+| 阶段 | 做成了什么 |
+|---|---|
+| spike | 用一本真 EPUB 把「本机 → 自建云 → 设备」整条路走通，并把 `/ui/api` 契约和其中每个坑记录下来。 |
+| M0 | API 客户端库：登录、列树、建目录、上传、移动、删除、导出——每个已知的坑都固化成代码层防御，并由离线测试钉住。 |
+| M1 | 推书：`rmclient push` 命令行与拖拽页共用同一条校验加上传的路径。补测了重复上传语义（REPORT §10）。 |
+| M2 | 树浏览与管理：新建、重命名、移动、删除——不可逆的删除前先摊开整棵子树，配删除记录与复活复查。补测了移到根级的 sentinel（§11）。 |
+| M3 | 笔记预览：用 rmscene 解析 `.rm` v6，逐页渲染 SVG，整本导出 PDF。 |
+| v1 | 内容管理器：搜索与排序、多选批量移动与删除、原件/整包下载、全库重名报告（§12）。 |
+| UI | 三个页面统一做了一轮呈现层：CSS token 设计体系与暗色模式、统一顶栏、吸附工具栏、底部悬浮批量条、toast、骨架态、键盘翻页。 |
+
+## 仓库结构
+
+```
+rmclient/
+  config.py     服务器地址、凭据、锁定目录（环境变量优先）
+  models.py     文档树模型、两套字段名、锁定目录助手
+  api.py        /ui/api 客户端，关键的守卫都在这
+  validate.py   上传前的后缀与内容校验
+  push.py       目标校验、重名检测、上传
+  manage.py     新建/重命名/移动/删除的策略与删除计划
+  render.py     rmdoc → 页 → SVG / PDF，以及原件取出
+  journal.py    删除记录，落在 var/deleted.json
+  cli.py        rmclient push / serve
+  web.py        FastAPI 路由
+  pages/        push.html（拖拽推书）、tree.html（管理器）、
+                preview.html（笔记预览）、app.css（共用设计 token）
+scripts/        dump_tree.py —— 只读打印文档树
+spike/          可行性验证代码与 REPORT.md（端点契约）
+tests/          离线测试
+```
+
 ## 开发
 
 ```bash
@@ -141,14 +177,6 @@ uv run pytest        # 离线测试，全程不碰真实服务器
 
 测试统一用 `httpx.MockTransport` 和 FastAPI 的 `TestClient`，渲染那部分用合成的
 `.rm` 场景数据，所以整套跑起来不需要任何凭据。
-
-```
-rmclient/     库与应用：config、models、api、validate、push、manage、
-              render、journal、cli、web（pages/ 放 HTML 与 CSS）
-scripts/      dump_tree.py —— 只读打印文档树
-spike/        可行性验证代码与 REPORT.md（端点契约）
-tests/        离线测试
-```
 
 `spike/` 下的脚本确实会写真实服务器。它们把动作限制在临时目录
 `rmclient-spike-<随机>` 里，跑完自己清理。

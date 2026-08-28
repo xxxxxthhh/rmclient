@@ -152,6 +152,42 @@ in [`spike/REPORT.md`](spike/REPORT.md).
   optimised for huge ones.
 - The trash is displayed read-only: no restore, no empty.
 
+## How it got here
+
+Each round was verified against a live server before the next one started; the
+contract findings live in [`spike/REPORT.md`](spike/REPORT.md).
+
+| Round | What landed |
+|---|---|
+| spike | Proved the whole path — laptop → self-hosted cloud → device — with a real EPUB, and wrote down the `/ui/api` contract and every trap in it. |
+| M0 | The API client library: login, list tree, create folder, upload, move, delete, export — with each documented pitfall encoded as a guard and pinned by offline tests. |
+| M1 | Pushing books: the `rmclient push` CLI and the drag-and-drop page, sharing one validation and upload path. Duplicate-upload semantics probed (REPORT §10). |
+| M2 | Tree browsing and management: create, rename, move, delete — with the full subtree shown before an irreversible delete, a deletion journal, and a resurrection re-check. Move-to-root sentinel probed (§11). |
+| M3 | Notebook preview: `.rm` v6 parsing via rmscene, per-page SVG rendering, whole-notebook PDF export. |
+| v1 | The content manager: search and sort, multi-select batch move and delete, original/package download, whole-library duplicate report (§12). |
+| UI | A design pass across all three pages: CSS-token design system with dark mode, one shared topbar, sticky toolbar, floating batch dock, toasts, skeletons, keyboard paging. |
+
+## Repository layout
+
+```
+rmclient/
+  config.py     server URL, credentials, locked folders (env vars first)
+  models.py     tree model, both key spellings, locked-folder helpers
+  api.py        the /ui/api client, with the guards that matter
+  validate.py   extension + content checks before any upload
+  push.py       target checks, duplicate detection, upload
+  manage.py     create / rename / move / delete policy, deletion plans
+  render.py     rmdoc → pages → SVG / PDF, original extraction
+  journal.py    deletion records in var/deleted.json
+  cli.py        rmclient push / serve
+  web.py        FastAPI routes
+  pages/        push.html (drag and drop), tree.html (manager),
+                preview.html (notebook viewer), app.css (shared design tokens)
+scripts/        dump_tree.py — read-only tree dump
+spike/          feasibility work and REPORT.md, the endpoint contract
+tests/          offline test suite
+```
+
 ## Development
 
 ```bash
@@ -161,14 +197,6 @@ uv run pytest        # offline test suite; never touches a real server
 The tests use `httpx.MockTransport` and FastAPI's `TestClient` throughout,
 including synthetic `.rm` scene data for the renderer, so the whole suite runs
 without credentials.
-
-```
-rmclient/     library + app: config, models, api, validate, push, manage,
-              render, journal, cli, web (pages/ holds the HTML and CSS)
-scripts/      dump_tree.py — read-only tree dump
-spike/        the feasibility work and REPORT.md, the endpoint contract
-tests/        offline test suite
-```
 
 The scripts under `spike/` do write to a real server. They confine themselves to
 a temporary `rmclient-spike-<random>` folder and clean up after themselves.
