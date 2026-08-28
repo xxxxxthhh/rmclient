@@ -2,29 +2,47 @@
 <meta charset="utf-8"><title>rmclient — 文档树</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
- #toolbar{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;margin:0 0 var(--sp-4)}
+ #toolbar{position:sticky;top:var(--topbar-h);z-index:15;display:flex;gap:var(--sp-2);
+          align-items:center;flex-wrap:wrap;margin:0 0 var(--sp-4);padding:var(--sp-2) 0;
+          background:color-mix(in srgb, var(--paper) 92%, transparent);backdrop-filter:blur(6px)}
  #search{flex:1;min-width:12rem}
- .node{padding:.1rem 0}
- .kids{margin-left:1.1rem;border-left:1px solid var(--line);padding-left:.6rem}
+
+ .row{display:flex;align-items:center;gap:.4rem;padding:.12rem .4rem;border-radius:var(--radius-sm)}
+ .row:hover{background:var(--surface-2)}
+ .row .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .row .tail{margin-left:auto;display:flex;align-items:center;gap:var(--sp-2);flex:none}
+ .row .ico{color:var(--ink-3);flex:none;display:flex}
+ details[open]>summary>.row>.ico{color:var(--accent)}
+ .locked .row .ico{color:var(--warn)}
+
+ .kids{margin-left:.85rem;border-left:1px dashed var(--line-2);padding-left:.7rem}
  summary{cursor:pointer;list-style:none}
  summary::-webkit-details-marker{display:none}
- summary::before{content:"▸ ";color:var(--ink-3)}
- details[open]>summary::before{content:"▾ "}
- .hit{background:var(--warn-soft);border-radius:3px}
+ summary .caret{color:var(--ink-3);flex:none;transition:transform .12s}
+ details[open]>summary .caret{transform:rotate(90deg)}
+
+ .hit{background:var(--warn-soft);border-radius:3px;padding:0 .15rem}
  .flash{animation:flash 2s ease-out}
  @keyframes flash{from{background:var(--warn-soft)}to{background:transparent}}
- .msg{padding:var(--sp-3) var(--sp-4);border-radius:var(--radius);margin:var(--sp-2) 0;white-space:pre-wrap}
- .err{background:var(--danger-soft)}.ok{background:var(--ok-soft)}.warn{background:var(--warn-soft)}
- #trash{color:var(--ink-3)}
- .acts{margin-left:var(--sp-2);visibility:hidden}
- .node:hover>.acts,.node:hover>summary>.acts{visibility:visible}
- .acts button{font-size:.8em;margin-left:.25rem;padding:0 .4rem}
- #batchbar{background:var(--accent-soft);border-radius:var(--radius);padding:var(--sp-2) var(--sp-3);
-           margin:var(--sp-2) 0;display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap}
- .pick{margin-right:.35rem}
- #pending .rec{font-size:.9em;color:var(--ink-2);padding:.05rem 0}
- #dups .group{margin:var(--sp-2) 0}
- #dups .item{font-size:.9em;color:var(--ink-2);margin-left:var(--sp-4)}
+
+ .acts{display:flex;gap:.2rem;visibility:hidden;flex:none}
+ .row:hover .acts,.row:focus-within .acts{visibility:visible}
+ .acts button{font-size:.78em;padding:.05rem .4rem}
+ .pick{margin:0 .1rem 0 0;accent-color:var(--accent)}
+
+ .batchdock{position:fixed;left:50%;bottom:var(--sp-5);transform:translateX(-50%);z-index:30;
+            display:flex;gap:var(--sp-2);align-items:center;padding:var(--sp-2) var(--sp-4);
+            border:1px solid var(--line-2);border-radius:999px;background:var(--surface);
+            box-shadow:var(--shadow-2);animation:dock-in .16s ease-out}
+ @keyframes dock-in{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1}}
+
+ #pending .rec{font-size:.9em;color:var(--ink-2);padding:.05rem 0;display:flex;
+               align-items:center;gap:var(--sp-2)}
+ #dups .group{margin:var(--sp-3) 0}
+ #dups .item{font-size:.92em;color:var(--ink-2);margin-left:var(--sp-4);display:flex;
+             align-items:center;gap:var(--sp-2)}
+ #trash-wrap{margin-top:var(--sp-5);color:var(--ink-3)}
+ .skel-row{height:1.4rem;margin:.35rem 0}
 </style>
 <header class="topbar">
   <a class="brand" href="/tree">
@@ -54,11 +72,11 @@
   <button id="dupcheck">重名检测</button>
   <button id="reload">刷新</button>
 </div>
-<div id="batchbar" hidden></div>
+<div id="batchbar" class="batchdock" role="region" aria-label="批量操作" hidden></div>
 <div id="dups" class="panel" hidden></div>
 <div id="pending" class="panel attention" hidden></div>
 <div id="log"></div>
-<div id="tree">读取中…</div>
+<div id="tree" aria-busy="true"></div>
 <details id="trash-wrap" hidden>
   <summary>回收站（<span id="trash-count">0</span> 项，只读）</summary>
   <div id="trash" class="kids"></div>
@@ -76,7 +94,40 @@ const el = (tag, cls, text) => {
   return n;
 };
 const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
-const say = (cls, text) => document.getElementById('log').prepend(el('div', 'msg ' + cls, text));
+
+const SVG = 'http://www.w3.org/2000/svg';
+const PATHS = {
+  folder: ['M3 6.5A1.5 1.5 0 0 1 4.5 5h3.2l1.4 1.8h6.4A1.5 1.5 0 0 1 17 8.3v6.2A1.5 1.5 0 0 1 15.5 16h-11A1.5 1.5 0 0 1 3 14.5z'],
+  doc: ['M5.5 3h6l3.5 3.5v10.5H5.5z', 'M11.5 3v3.5H15'],
+  caret: ['M8 5l5 5-5 5'],
+};
+function icon(kind, cls) {
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('width', '15'); svg.setAttribute('height', '15');
+  svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.5'); svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  if (cls) svg.setAttribute('class', cls);
+  for (const d of PATHS[kind]) {
+    const path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', d);
+    svg.append(path);
+  }
+  return svg;
+}
+
+// 反馈统一走右上角 toast：成功/提示自己淡出，报错留着等人读完再关。
+function say(cls, text) {
+  const box = document.getElementById('toasts');
+  const card = el('div', 'toast ' + cls, text);
+  const close = el('button', 'close', '×');
+  close.setAttribute('aria-label', '关闭');
+  close.onclick = () => card.remove();
+  card.append(close);
+  box.prepend(card);
+  if (cls !== 'err') setTimeout(() => card.remove(), 7000);
+}
 
 // ---- 状态 ----
 
@@ -162,18 +213,32 @@ function checkbox(node, allowed) {
   return box;
 }
 
+function nameSpan(node) {
+  return el('span', 'name' + (matches(node) && FILTER ? ' hit' : ''), node.name);
+}
+
+function tail(...bits) {
+  const box = el('span', 'tail');
+  for (const b of bits) if (b) box.append(b);
+  return box;
+}
+
 function renderDoc(node, allowed) {
-  const row = el('div', 'node' + (node.locked ? ' locked' : ''));
-  row.dataset.id = node.id;
+  const wrap = el('div', 'node' + (node.locked ? ' locked' : ''));
+  wrap.dataset.id = node.id;
+  const row = el('div', 'row');
   const pick = checkbox(node, allowed);
   if (pick) row.append(pick);
-  const label = el('span', matches(node) && FILTER ? 'hit' : null, '· ' + node.name);
-  row.append(label);
-  row.append(el('span', 'meta',
-    `[${node.type || '?'}, ${kb(node.size)}, ${(node.lastModified || '').slice(0, 10)}]`));
-  if (node.locked) row.append(el('span', 'badge', '🔒 只读'));
-  row.append(actions(node, allowed));
-  return row;
+  row.append(el('span', 'ico'));
+  row.lastChild.append(icon('doc'));
+  row.append(nameSpan(node));
+  row.append(tail(
+    node.type ? el('span', 'badge', node.type) : null,
+    el('span', 'meta mono', `${kb(node.size)} · ${(node.lastModified || '').slice(0, 10)}`),
+    node.locked ? el('span', 'badge lock', '只读') : null,
+    actions(node, allowed)));
+  wrap.append(row);
+  return wrap;
 }
 
 function renderFolder(node, allowed) {
@@ -182,12 +247,18 @@ function renderFolder(node, allowed) {
   box.open = FILTER ? subtreeMatches(node) : OPEN.has(node.id);
   box.ontoggle = () => { if (!FILTER) box.open ? OPEN.add(node.id) : OPEN.delete(node.id); };
   const head = el('summary');
+  const row = el('div', 'row');
+  row.append(icon('caret', 'caret'));
   const pick = checkbox(node, allowed);
-  if (pick) head.append(pick);
-  head.append(el('span', matches(node) && FILTER ? 'hit' : null, '📁 ' + node.name));
-  head.append(el('span', 'meta', `(${node.children.length})`));
-  if (node.locked) head.append(el('span', 'badge', '🔒 只读'));
-  head.append(actions(node, allowed));
+  if (pick) row.append(pick);
+  row.append(el('span', 'ico'));
+  row.lastChild.append(icon('folder'));
+  row.append(nameSpan(node));
+  row.append(tail(
+    el('span', 'meta mono', `${node.children.length} 项`),
+    node.locked ? el('span', 'badge lock', '只读') : null,
+    actions(node, allowed)));
+  head.append(row);
   box.append(head);
   const kids = el('div', 'kids');
   renderInto(kids, node.children, allowed);
@@ -201,7 +272,11 @@ function renderInto(container, nodes, allowed = true) {
   for (const node of shown) {
     container.append(node.kind === 'folder' ? renderFolder(node, allowed) : renderDoc(node, allowed));
   }
-  if (!shown.length) container.append(el('div', 'meta', FILTER ? '（无匹配）' : '（空）'));
+  if (!shown.length) {
+    container.append(el('div', 'empty', FILTER
+      ? `没有名字含「${FILTER}」的条目。换个词，或清空搜索框看全部。`
+      : '这个目录是空的。用目录行上的「传到这里」推一本书进来。'));
+  }
 }
 
 function drawBatchBar() {
@@ -209,11 +284,15 @@ function drawBatchBar() {
   bar.hidden = !SELECTED.size;
   if (!SELECTED.size) return;
   bar.textContent = '';
-  bar.append(el('span', null, `已选 ${SELECTED.size} 项`));
-  const add = (label, fn) => { const b = el('button', null, label); b.onclick = fn; bar.append(b); };
-  add('批量移动', askMoveMany);
-  add('批量删除', () => askDelete([...SELECTED], `选中的 ${SELECTED.size} 项`));
-  add('清空选择', () => { SELECTED.clear(); drawBatchBar(); draw(); });
+  bar.append(el('strong', null, `已选 ${SELECTED.size} 项`));
+  const add = (label, fn, cls) => {
+    const b = el('button', cls, label);
+    b.onclick = fn;
+    bar.append(b);
+  };
+  add('移动', askMoveMany);
+  add('删除', () => askDelete([...SELECTED], `选中的 ${SELECTED.size} 项`), 'danger');
+  add('取消', () => { SELECTED.clear(); drawBatchBar(); draw(); }, 'ghost');
 }
 
 function askMoveMany() {
@@ -256,11 +335,23 @@ function draw() {
   renderInto(document.getElementById('trash'), TREE.trash, false);  // 回收站只读
 }
 
+function showSkeleton() {
+  const box = document.getElementById('tree');
+  box.textContent = '';
+  for (let i = 0; i < 6; i++) {
+    const row = el('div', 'skeleton skel-row');
+    row.style.width = `${45 + (i % 3) * 18}%`;
+    box.append(row);
+  }
+}
+
 async function load() {
+  if (!TREE.entries.length) showSkeleton();
   const r = await fetch('/api/tree');
   if (!r.ok) { say('err', '读不到文档树，看下终端里的报错'); return; }
   TREE = await r.json();
   reindex();
+  document.getElementById('tree').removeAttribute('aria-busy');
   for (const id of [...SELECTED]) if (!INDEX.has(id)) SELECTED.delete(id);  // 删掉/移走的别留在选中里
   drawBatchBar();
   draw();
@@ -402,11 +493,12 @@ async function askDelete(roots, label) {
   if (!r.ok) { say('err', (plan.detail && plan.detail.message) || `失败：HTTP ${r.status}`); return; }
 
   dialog(`删除${label}`, dlg => {
-    dlg.append(el('div', 'msg err',
-      '删除是硬删：不进回收站，不可撤销，并且会同步删掉设备上的文件。\n' +
+    dlg.append(el('div', 'alarm',
+      '硬删：不进回收站，不可撤销，并且会同步删掉设备上的文件。'));
+    dlg.append(el('div', 'meta',
       '设备端如果对这些文档有本地变更，下次同步可能把它们原 UUID 推回来（复活）。'));
     dlg.append(el('div', null, `将删除 ${plan.items.length} 项（先深后浅）：`));
-    const list = el('div', 'kids');
+    const list = el('div', 'scroller');
     for (const item of plan.items) {
       const line = item.kind === 'folder'
         ? `📁 ${item.name}/`
@@ -466,7 +558,7 @@ async function showDuplicates() {
     }
     box.append(wrap);
   }
-  if (!groups.length) box.append(el('div', null, '没有同名文档。'));
+  if (!groups.length) box.append(el('div', 'empty', '没有同名文档——这个库是干净的。'));
   const close = el('button', null, '收起');
   close.onclick = () => { box.hidden = true; };
   box.append(el('div', null), close);

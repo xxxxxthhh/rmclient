@@ -506,7 +506,7 @@ def test_batch_move_marks_a_bad_item_without_failing_the_batch(live_web):
 
 def test_tree_page_has_the_batch_bar_and_no_checkbox_for_locked_rows(web):
     html = web[0].get("/tree").text
-    assert 'id="batchbar"' in html and "批量移动" in html and "批量删除" in html
+    assert 'id="batchbar"' in html and "askMoveMany" in html and "askDelete([...SELECTED]" in html
     assert "if (node.locked || !allowed) return null;" in html  # 信箱/回收站没有勾选框
 
 
@@ -614,3 +614,28 @@ def test_every_page_shares_the_topbar_and_stylesheet(preview_web):
 def test_the_current_page_is_marked_for_assistive_tech(web):
     assert '<a class="tab" href="/" aria-current="page">' in web[0].get("/").text
     assert '<a class="tab" href="/tree" aria-current="page">' in web[0].get("/tree").text
+
+
+def test_tree_rows_carry_icons_badges_and_right_aligned_meta(web):
+    html = web[0].get("/tree").text
+    assert "function icon(" in html and "PATHS = {" in html  # 内联 SVG，不引外部图标
+    assert "'badge lock'" in html and "'meta mono'" in html
+    assert ".row .tail{margin-left:auto" in html
+
+
+def test_tree_has_sticky_toolbar_skeleton_and_empty_states(web):
+    html = web[0].get("/tree").text
+    assert "#toolbar{position:sticky" in html
+    assert "showSkeleton()" in html and "skeleton skel-row" in html
+    assert "换个词，或清空搜索框看全部" in html
+
+
+def test_delete_dialog_separates_the_irreversible_warning(web):
+    html = web[0].get("/tree").text
+    assert "'alarm'" in html and "硬删：不进回收站，不可撤销" in html
+
+
+def test_tree_feedback_goes_to_dismissible_toasts(web):
+    html = web[0].get("/tree").text
+    assert 'id="toasts"' in html and "aria-live=\"polite\"" in html
+    assert "if (cls !== 'err') setTimeout" in html  # 报错不自动消失

@@ -31,6 +31,7 @@
   --shadow-1: 0 1px 2px rgb(31 29 26 / .06), 0 2px 10px rgb(31 29 26 / .05);
   --shadow-2: 0 10px 34px rgb(31 29 26 / .20);
 
+  --topbar-h: 3.3rem;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
           "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
