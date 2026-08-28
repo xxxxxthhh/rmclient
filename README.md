@@ -20,7 +20,9 @@
   子树锁死只读），支持新建目录 / 重命名 / 移动 / 删除；删除前列出整棵子树并写明硬删后果，
   删后记录落到 `var/deleted.json`（不进 git），页面常驻「删除记录待复查」区块，等设备
   同步一轮后一键复活复查、确认干净再清记录。移动到根级的 `parentId` 已补测（REPORT §11：空串）。
-- ⬜ M3（看笔记）未开始。
+- ✅ **M3 看笔记**：`/tree` 文档行「预览」→ 逐页 SVG 渲染（rmscene 解析 .rm v6）+ 整本
+  导出 PDF。类型以 rmdoc 内 `.content` 为准，非 notebook 明确回「不支持预览」；信箱里的
+  笔记可只读预览（锁只针对写操作）。
 
 ## 快速上手
 
@@ -30,6 +32,7 @@ uv run rmclient push book.epub --to Books/CS  # 推一本书（--to 按树上的
 uv run rmclient serve                         # 本地 Web → http://127.0.0.1:8000
                                               #   /      拖拽上传
                                               #   /tree  文档树浏览与管理（增删移改）
+                                              #   /preview/<uuid>  笔记预览 + 导出 PDF
 uv run python scripts/dump_tree.py            # 只读：打印云上完整文档树（含回收站）
 uv run pytest                                 # 离线单元测试（不打真实 API）
 python3 spike/epub_spike.py                   # epub 上传契约闭环测试（自清理）
@@ -49,7 +52,7 @@ uv run python spike/move_root_spike.py        # 移动到根级契约补测（�
 README.md        # 本文件
 CLAUDE.md        # 项目纪律与上下文（agent 干活前必读）
 SPEC.md          # v0 spec 草案
-rmclient/        # 库 + 前端：config / models / api / validate / push / manage / cli / web
+rmclient/        # 库 + 前端：config / models / api / validate / push / manage / render / cli / web
                  #   pages/ 是两个页面的 HTML（无构建链）
 tests/           # 离线单元测试
 spike/           # 可行性验证代码 + REPORT.md（契约权威）
@@ -65,4 +68,4 @@ scripts/         # 小工具（dump_tree.py）
 | 上传 | `POST /ui/api/documents/upload` | 100% 按扩展名分派（白名单 .pdf/.epub/.rmdoc），不校验内容；错误回 500 需解析 body |
 | 移动/重命名 | `PUT /ui/api/documents` | `name` 无条件覆写——只移动也必须回传原名 |
 | 删除 | `DELETE /ui/api/documents/{id}` | **硬删不进回收站**；活跃设备会把有本地变更的文档原 UUID 推回（复活） |
-| 导出 | `GET /ui/api/documents/{id}?type=rmdoc` | zip，原始字节无损 |
+| 导出 | `GET /ui/api/documents/{id}?type=rmdoc` | zip，原始字节无损；`.content` 才是准确的 fileType |
