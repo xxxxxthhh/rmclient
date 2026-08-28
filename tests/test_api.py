@@ -181,11 +181,20 @@ def test_move_without_name_looks_up_the_original():
     }
 
 
-def test_move_with_explicit_name_skips_the_tree_read():
+def test_move_reads_the_tree_even_with_an_explicit_name():
+    # 读树是为了信箱断言：默认路径必须有保护，不能只靠调用方自觉。
     client, seen = logged_in()
     client.move("b1", "", name="Renamed")
+    assert [r.method for r in seen] == ["GET", "PUT"]
+    assert json.loads(seen[1].content) == {"documentId": "b1", "parentId": "", "name": "Renamed"}
+
+
+def test_move_with_a_fresh_tree_in_hand_skips_the_extra_read():
+    client, seen = logged_in()
+    entries = client.list_tree().entries
+    seen.clear()
+    client.move("b1", "cs", name="Book One", entries=entries)
     assert [r.method for r in seen] == ["PUT"]
-    assert json.loads(seen[0].content)["name"] == "Renamed"
 
 
 def test_move_refuses_when_the_original_name_is_unknown():
@@ -200,7 +209,21 @@ def test_move_refuses_an_empty_name():
     client, seen = logged_in()
     with pytest.raises(ValueError, match="empty name"):
         client.move("b1", "books", name="")
-    assert seen == []
+    assert "PUT" not in [r.method for r in seen]
+
+
+def test_move_refuses_a_document_inside_the_mailbox():
+    client, seen = logged_in()
+    with pytest.raises(PermissionError, match="Mailbox"):
+        client.move("mb-doc", "books")
+    assert "PUT" not in [r.method for r in seen]
+
+
+def test_move_refuses_a_mailbox_target():
+    client, seen = logged_in()
+    with pytest.raises(PermissionError, match="Mailbox"):
+        client.move("b1", "mb")
+    assert "PUT" not in [r.method for r in seen]
 
 
 # ---- 删除：白名单 + 先深后浅 + 信箱 --------------------------------
@@ -216,7 +239,15 @@ def test_delete_requires_the_id_to_be_whitelisted():
 def test_delete_sends_the_request_for_a_whitelisted_id():
     client, seen = logged_in()
     client.delete("b1", allowed_ids={"b1"})
-    assert (seen[0].method, seen[0].url.path) == ("DELETE", "/ui/api/documents/b1")
+    assert (seen[-1].method, seen[-1].url.path) == ("DELETE", "/ui/api/documents/b1")
+
+
+def test_delete_refuses_a_mailbox_id_even_when_whitelisted():
+    # 白名单是调用方的显式意图，信箱是绝对禁区：两道闸都得过。
+    client, seen = logged_in()
+    with pytest.raises(PermissionError, match="Mailbox"):
+        client.delete("mb-doc", allowed_ids={"mb-doc"})
+    assert "DELETE" not in [r.method for r in seen]
 
 
 def test_delete_many_goes_deepest_first():
@@ -225,6 +256,7 @@ def test_delete_many_goes_deepest_first():
     seen.clear()
     ordered = client.delete_many(["books", "b1"], allowed_ids={"books", "b1"}, entries=tree.entries)
     assert ordered == ["b1", "books"]
+    # 那棵新鲜的树往下传，不是每个 id 各读一次
     assert [r.url.path for r in seen] == ["/ui/api/documents/b1", "/ui/api/documents/books"]
 
 

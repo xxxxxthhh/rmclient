@@ -133,16 +133,33 @@ class RmClient:
         )
         return parse_write_response(r.json())
 
-    def move(self, doc_id: str, parent_id: str = _ROOT_FOLDERS, name: str | None = None) -> None:
+    def move(
+        self,
+        doc_id: str,
+        parent_id: str = _ROOT_FOLDERS,
+        name: str | None = None,
+        *,
+        entries: Iterable[Node] | None = None,
+    ) -> None:
         """移动/重命名。parent_id 传空串即根级（REPORT §11 实测，回查树确认）。
 
         注意上传端点的根级 sentinel 是 "root"，这里是空串，两套写法别统一。
 
         name 无条件覆写：只想移动也必须把原名原样传回，漏传会把可见名置空
         （REPORT §9.1）。name=None 时先读树取原名，取不到就报错，绝不发空名。
+
+        默认路径自己读一次树做信箱断言（源和目标两头都查）——不能只靠调用方自觉。
+        调用方手上已经有新鲜的树时传 entries 进来，省一次往返。
         """
+        if entries is None:
+            entries = self.list_tree().entries
+        locked = mailbox_ids(entries)
+        if doc_id in locked:
+            raise PermissionError(f"refusing to move {doc_id}: it is in the Mailbox subtree")
+        if parent_id and parent_id in locked:
+            raise PermissionError(f"refusing to move into the Mailbox subtree: {parent_id}")
         if name is None:
-            node = find(self.list_tree().entries, doc_id)
+            node = find(entries, doc_id)
             if node is None:
                 raise LookupError(f"{doc_id} not in tree: refusing to move without its name")
             name = node.name
@@ -152,15 +169,22 @@ class RmClient:
             "PUT", "/ui/api/documents", json={"documentId": doc_id, "parentId": parent_id, "name": name}
         )
 
-    def delete(self, doc_id: str, *, allowed_ids: Collection[str]) -> None:
+    def delete(
+        self, doc_id: str, *, allowed_ids: Collection[str], entries: Iterable[Node] | None = None
+    ) -> None:
         """硬删（不进回收站），且会同步删掉设备上的文件。
 
-        只接受显式 UUID 白名单，绝不按名字匹配（REPORT §4.4）。
+        两道闸：显式 UUID 白名单（绝不按名字匹配，REPORT §4.4），以及信箱断言
+        —— 默认自己读一次树，调用方有新鲜的树就传 entries 省一次往返。
         注意复活竞态：设备端有本地变更的文档会被原 UUID 推回，删完要复查
         （REPORT §9.2）。
         """
         if doc_id not in allowed_ids:
             raise PermissionError(f"refusing to delete {doc_id}: not in the explicit allow-list")
+        if entries is None:
+            entries = self.list_tree().entries
+        if doc_id in mailbox_ids(entries):
+            raise PermissionError(f"refusing to delete {doc_id}: it is in the Mailbox subtree")
         self._request("DELETE", f"/ui/api/documents/{doc_id}")
 
     def delete_many(
@@ -180,5 +204,5 @@ class RmClient:
             raise PermissionError(f"refusing to touch the Mailbox subtree: {in_mailbox}")
         ordered = deepest_first(ids, entries)
         for doc_id in ordered:
-            self.delete(doc_id, allowed_ids=allowed_ids)
+            self.delete(doc_id, allowed_ids=allowed_ids, entries=entries)
         return ordered
