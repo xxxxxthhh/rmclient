@@ -23,6 +23,10 @@ rmfakecloud v0.0.31，本项目**只做 API 消费者**。契约权威文档：`
 
 ## 凭据
 
+优先读环境变量 `RMCLIENT_URL` / `RMCLIENT_USER` / `RMCLIENT_PASSWORD`（或
+`RMCLIENT_PASSWORD_FILE`）；锁定目录用 `RMCLIENT_LOCKED_FOLDERS`（默认 `Mailbox`）。
+一个都不设时才回落到下面这套本机布局——本机日常用法不受影响。
+
 暂与 paperpal 共用账户（rmfakecloud 文档树按 user 隔离，换账户就看不到设备的树）：
 用户名 `~/Documents/paperpal/.env` 的 `RMFAKECLOUD_USER`，密码
 `~/Documents/paperpal/secrets/rmfakecloud_password`（读文件须 `.strip()`）。

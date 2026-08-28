@@ -1,0 +1,146 @@
+# rmclient
+
+跑在本机的 [rmfakecloud](https://github.com/ddvk/rmfakecloud) 内容管理客户端：
+推书到 reMarkable、整理文档树、预览笔记、取回原件、查重名——全部在自己电脑上
+完成，通过服务器的 `/ui/api` 端点通信。
+
+*[English](README.md)*
+
+服务端一行不动，设备端什么也不装：rmclient 只是它的又一个 API 消费者。整个东西
+是一个 Python 进程，Web 界面是纯 HTML/CSS/JS，无构建链、无外部资源，离线可用。
+
+**状态**：在 rmfakecloud **v0.0.31** 上实测可用，也只在这个版本上测过。端点契约
+与各种坑记在 [`spike/REPORT.md`](spike/REPORT.md)。
+
+## 有什么
+
+| 页面 | 干什么 |
+|---|---|
+| `/` | 把 epub/pdf/rmdoc 拖进来，选目标目录，上传。逐文件进度与结果。 |
+| `/tree` | 整棵文档树：搜索、排序、新建/重命名/移动/删除（单个或多选）、往任意目录上传、下载原件、重名报告。 |
+| `/preview/<id>` | 把笔记逐页渲染成 SVG，翻页浏览，整本导出 PDF。 |
+
+CLI 负责推书：
+
+```bash
+rmclient push book.epub                    # 传到根级
+rmclient push book.epub --to Books/CS      # 按树上的可见名路径指定目录
+rmclient push book.epub --to Books --force # 明知重名也要再传一份
+rmclient serve --port 8000                 # 起 Web 界面
+```
+
+## 快速上手
+
+需要 Python 3.14 和 [uv](https://docs.astral.sh/uv/)。
+
+```bash
+git clone <本仓库> && cd rmclient
+uv sync
+
+export RMCLIENT_URL=https://cloud.example.com
+export RMCLIENT_USER=you@example.com
+export RMCLIENT_PASSWORD_FILE=~/.config/rmclient/password   # 或者 RMCLIENT_PASSWORD
+
+uv run rmclient serve            # → http://127.0.0.1:8000
+```
+
+动手之前先跑个只读的确认能连通：
+
+```bash
+uv run python scripts/dump_tree.py    # 打印整棵树，含回收站
+```
+
+## 配置
+
+配置全部走环境变量，没有配置文件。
+
+| 变量 | 默认 | 含义 |
+|---|---|---|
+| `RMCLIENT_URL` | — | rmfakecloud 地址，要带协议。结尾斜杠会被忽略。 |
+| `RMCLIENT_USER` | — | 登录邮箱。 |
+| `RMCLIENT_PASSWORD` | — | 密码，按原样使用。 |
+| `RMCLIENT_PASSWORD_FILE` | — | 存密码的文件路径，读入后 strip。与 `RMCLIENT_PASSWORD` **二选一**，不能都设。 |
+| `RMCLIENT_LOCKED_FOLDERS` | `Mailbox` | 要保护的**根级**目录名，逗号分隔。设成空串表示一个都不锁。 |
+
+一个都不设时，rmclient 会回落到它原始部署的本机布局（细节在 `CLAUDE.md`），
+且只在那些文件确实存在时才回落。否则直接拒绝启动并告诉你该设哪几个变量——
+绝不会悄悄连到一个你没想到的地方去。
+
+凭据只从环境变量或磁盘读，不进日志、不打印、不进仓库。
+
+## 锁定目录
+
+锁定目录是指某个**根级**目录，它整棵子树只读：
+
+- 树上照常**显示**，标上锁标记，但不给任何写操作按钮；
+- 不出现在任何批量操作里，也没有勾选框；
+- 新建 / 重命名 / 移动 / 删除 / 上传只要落在里面一律拒绝，而且这道检查在
+  **服务端**再做一遍，不只是界面过滤；
+- 只读访问照旧：里面的文档可以预览、可以下载。
+
+嵌套的同名目录不算——锁的是根级那一个。
+
+## 安全须知
+
+下面这些都是对真实服务器实测出来的，证据在 [`spike/REPORT.md`](spike/REPORT.md)。
+
+- **删除是硬删，而且会传到设备上。** 这个操作在服务端没有回收站：删掉之后设备
+  下次同步就把本地那份也丢掉。rmclient 在你确认之前会把整棵将被删除的子树列
+  出来，按先深后浅删（服务端不级联），并且只删显式白名单里的 UUID。
+- **删掉的文档可能复活。** 如果设备上对某个文档有本地改动，它下次同步会把这个
+  文档按**原 UUID** 推回来。rmclient 把每次删除记进 `var/deleted.json`（不进
+  git），并在树页面常驻一个「复活复查」面板——这个竞态要等一轮设备同步之后才
+  看得出来。
+- **上传对不对，责任全在客户端。** 服务端**只看文件名后缀**（`.pdf`/`.epub`/
+  `.rmdoc`）分派，完全不看内容；遇到不认识的后缀回的是 HTTP 500，真正的原因在
+  响应体里。rmclient 在本机同时校验后缀**和**内容（EPUB 的 OCF 结构、PDF/zip
+  魔数），对不上就不发。
+- **重复上传不会合并。** 同一个文件名传两次会得到两个独立文档、同一个可见名。
+  rmclient 会警告并要求你显式确认，而不是悄悄让你多出一本书。
+- **移动会顺带改名。** 移动端点无条件覆写名字，所以只想移动时 rmclient 总是把
+  原名原样回传。
+- **重名报告不删任何东西。** 它只按可见名分组、告诉你它们在哪；哪一份该留是你
+  的决定。
+
+## 契约速查
+
+rmclient 依赖的端点，以及每个端点各自的坑。完整证据在
+[`spike/REPORT.md`](spike/REPORT.md)。
+
+| 操作 | 端点 | 关键坑 |
+|---|---|---|
+| 登录 | `POST /ui/api/login` | 响应体**就是** JWT；用 `Authorization: Bearer` 回传，别依赖 cookie。 |
+| 列树 | `GET /ui/api/documents` | 读响应小写键、写响应大写键两套字段名。刚上传的文档 `type` 回显的是它的名字，不可信。 |
+| 上传 | `POST /ui/api/documents/upload` | 100% 按文件名后缀分派（`.pdf`/`.epub`/`.rmdoc`），完全不校验内容。后缀不在白名单回 HTTP 500，原因在响应体里。 |
+| 移动/重命名 | `PUT /ui/api/documents` | `name` 无条件覆写，只想移动也必须把原名回传。`parentId: ""` 表示根级。 |
+| 删除 | `DELETE /ui/api/documents/{id}` | 硬删、不进回收站、且会同步到设备。设备上有本地改动时会把文档按原 UUID 推回来。 |
+| 导出 | `GET /ui/api/documents/{id}?type=rmdoc` | zip，原始字节无损。包里的 `.content` 才是可信的 `fileType`。 |
+
+## 兼容性
+
+- 只在 **rmfakecloud v0.0.31** 上测过。别的版本可能不一样；实测到的契约都写在
+  `spike/REPORT.md` 里。
+- 认证用 `Authorization: Bearer`，不依赖 cookie。
+- 如果你的服务器在 Cloudflare 隧道后面，注意免费边缘每请求 100MB 的上限：导出
+  大笔记或下载大部头可能撞上。导出还会整份缓冲进内存，并且压着 120 秒读超时。
+- 树上文档的 `size` 是它所有 blob 之和，不是原件的大小。
+
+## 开发
+
+```bash
+uv run pytest        # 离线测试，全程不碰真实服务器
+```
+
+测试统一用 `httpx.MockTransport` 和 FastAPI 的 `TestClient`，渲染那部分用合成的
+`.rm` 场景数据，所以整套跑起来不需要任何凭据。
+
+```
+rmclient/     库与应用：config、models、api、validate、push、manage、
+              render、journal、cli、web（pages/ 放 HTML 与 CSS）
+scripts/      dump_tree.py —— 只读打印文档树
+spike/        可行性验证代码与 REPORT.md（端点契约）
+tests/        离线测试
+```
+
+`spike/` 下的脚本确实会写真实服务器。它们把动作限制在临时目录
+`rmclient-spike-<随机>` 里，跑完自己清理。
