@@ -7,7 +7,7 @@
 """
 
 from rmclient import RmClient
-from rmclient.models import Folder, mailbox_ids
+from rmclient.models import Folder, display_type, mailbox_ids
 
 
 def show(nodes, depth, locked_ids):
@@ -18,7 +18,7 @@ def show(nodes, depth, locked_ids):
             print(f"{pad}📁 {node.name}/{lock}")
             show(node.children, depth + 1, locked_ids)
         else:
-            print(f"{pad}·  {node.name}  [{node.type or '?'}, "
+            print(f"{pad}·  {node.name}  [{display_type(node) or '?'}, "
                   f"{node.size / 1024:.0f}KB, {node.last_modified[:10]}]{lock}")
 
 

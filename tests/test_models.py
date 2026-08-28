@@ -276,3 +276,17 @@ def test_several_folders_can_be_locked_at_once(monkeypatch):
 def test_the_default_is_still_mailbox_only():
     # 我们自己的部署行为一丝不变，这条是硬纪律。
     assert [f.name for f in mailbox_roots(tree().entries)] == ["Mailbox"]
+
+
+# ---- 展示类型 ------------------------------------------------------
+
+
+def test_display_type_trusts_only_synced_values():
+    from rmclient.models import display_type
+
+    for good in ("notebook", "epub", "pdf"):
+        assert display_type(Document(id="a", name="b", type=good)) == good
+    # 刚上传未经设备同步的文档，type 回显的是可见名（REPORT §4.1/§10）——必须过滤，
+    # 否则 UI 会把整个书名当类型徽章渲染出来。
+    assert display_type(Document(id="a", name="太白金星有点烦", type="太白金星有点烦")) == ""
+    assert display_type(Folder(id="f", name="F")) == ""

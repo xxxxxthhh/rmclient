@@ -12,6 +12,7 @@ from .api import RmApiError, RmClient
 from .models import (
     Document,
     Folder,
+    display_type,
     Node,
     Tree,
     find,
@@ -96,7 +97,7 @@ def plan_delete(tree: Tree, node_id: str) -> list[dict]:
                 "id": node.id,
                 "name": node.name,
                 "kind": "folder" if isinstance(node, Folder) else "doc",
-                "type": getattr(node, "type", ""),
+                "type": display_type(node),
                 "size": getattr(node, "size", 0),
                 "path": "/".join(path),
                 "depth": len(path) - root_depth,  # 相对深度，给对话框缩进用
@@ -123,7 +124,7 @@ def duplicate_groups(tree: Tree) -> list[dict]:
                 "path": "/".join(path),
                 "size": node.size,
                 "lastModified": node.last_modified,
-                "type": node.type,
+                "type": display_type(node),
                 "locked": node.id in locked,
             }
         )

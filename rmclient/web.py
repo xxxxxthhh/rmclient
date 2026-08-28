@@ -28,7 +28,7 @@ from .manage import (
     plan_delete_many,
     rename,
 )
-from .models import Folder, PathError, Tree, find, mailbox_ids, walk
+from .models import Folder, PathError, Tree, display_type, find, mailbox_ids, walk
 from .push import DuplicateName, push
 from .render import Notebook, original_bytes, page_to_svg, pages_to_pdf, parse_rmdoc
 from .validate import ValidationError
@@ -88,7 +88,7 @@ def tree_json(tree: Tree) -> dict:
         }
         if isinstance(node, Folder):
             return base | {"kind": "folder", "children": [node_json(c) for c in node.children]}
-        return base | {"kind": "doc", "type": node.type, "size": node.size}
+        return base | {"kind": "doc", "type": display_type(node), "size": node.size}
 
     return {
         "entries": [node_json(n) for n in tree.entries],

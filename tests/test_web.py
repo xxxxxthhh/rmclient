@@ -704,3 +704,12 @@ def test_delete_confirm_button_is_danger_red_not_accent_green(web):
     for other in ("askNewFolder", "askRename", "askMove"):
         block = html[html.index(f"function {other}(") :][:700]
         assert "'danger'" not in block
+
+
+def test_tree_json_filters_the_echoed_type_of_fresh_uploads():
+    # 刚上传的文档 type 回显可见名，不是类型——徽章一律不渲染假值。
+    from rmclient.models import Document, Tree
+    from rmclient.web import tree_json
+
+    tree = Tree(entries=[Document(id="d", name="新书", type="新书", size=1)])
+    assert tree_json(tree)["entries"][0]["type"] == ""

@@ -154,6 +154,17 @@ def walk(
             yield from walk(node.children, skip_mailbox=False, _path=_path + (node.name,))
 
 
+# 树上 type 只有这几个值可信（都来自设备同步后的索引，REPORT §6）。
+KNOWN_TYPES = frozenset({"notebook", "epub", "pdf"})
+
+
+def display_type(node: Node) -> str:
+    """给人看的类型。刚上传、未经设备同步的文档，树上 type 回显的是可见名
+    （REPORT §4.1/§10）——那不是类型，展示层一律过滤成空串，不渲染假徽章。"""
+    t = getattr(node, "type", "")
+    return t if t in KNOWN_TYPES else ""
+
+
 def find(entries: Iterable[Node], node_id: str) -> Node | None:
     for _, node in walk(entries):
         if node.id == node_id:
