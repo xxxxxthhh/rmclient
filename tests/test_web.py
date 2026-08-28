@@ -567,3 +567,25 @@ def test_tree_page_has_the_duplicate_panel_and_jump(web):
     html = web[0].get("/tree").text
     assert 'id="dupcheck"' in html and "/api/duplicates" in html
     assert "function jumpTo(" in html and "scrollIntoView" in html
+
+
+def test_download_package_forces_the_whole_rmdoc(preview_web):
+    # 批注和笔迹都在整包里，原件不含（REPORT §12）。
+    client, _, _ = preview_web
+    plain = client.get("/api/download/loose")
+    packed = client.get("/api/download/loose?package=1")
+    assert packed.status_code == 200
+    assert packed.headers["content-type"] == "application/zip"
+    assert "Loose.rmdoc" in packed.headers["content-disposition"]
+    assert len(packed.content) > len(plain.content)  # 整包比原件大
+    assert b".content" in packed.content  # 确实是 rmdoc 而不是原 epub
+
+
+def test_download_package_of_a_notebook_matches_the_default(preview_web):
+    client, _, _ = preview_web
+    assert client.get("/api/download/b1?package=1").content == client.get("/api/download/b1").content
+
+
+def test_tree_page_offers_the_package_download(web):
+    html = web[0].get("/tree").text
+    assert "?package=1" in html and "含设备端的批注与笔迹" in html

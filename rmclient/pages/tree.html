@@ -134,15 +134,19 @@ function sorted(nodes) {
 
 function actions(node, allowed) {
   const box = el('span', 'acts');
-  const add = (label, fn) => {
+  const add = (label, fn, title) => {
     const b = el('button', null, label);
+    if (title) b.title = title;
     b.onclick = e => { e.preventDefault(); e.stopPropagation(); fn(); };
     box.append(b);
   };
   // 只读操作：信箱里的文档也给（锁只针对写操作）；回收站不给。
   if (node.kind === 'doc' && allowed) {
     add('预览', () => { location.href = '/preview/' + node.id; });
-    add('下载', () => { location.href = '/api/download/' + node.id; });
+    add('下载', () => { location.href = '/api/download/' + node.id; },
+        '取回原件（epub/pdf 给原文件本身，笔记给整包）。不含设备端批注。');
+    add('整包', () => { location.href = '/api/download/' + node.id + '?package=1'; },
+        '整包 .rmdoc：含设备端的批注与笔迹，以及设备为批注过的 epub 生成的 PDF 渲染件。');
   }
   if (node.locked || !allowed) return box;
   if (node.kind === 'folder') {
