@@ -61,6 +61,7 @@ function actions(node, allowed) {
   if (node.kind === 'folder') add('＋目录', () => askNewFolder(node.id, node.name));
   add('重命名', () => askRename(node));
   add('移动', () => askMove(node));
+  add('删除', () => askDelete(node));
   return box;
 }
 
@@ -177,6 +178,67 @@ function askMove(node) {
     const parent = dlg.querySelector('select').value;
     await call('/api/move', {id: node.id, parent}, () => `✓ 已移动「${node.name}」`);
   });
+}
+
+async function askDelete(node) {
+  const body = new FormData(); body.append('id', node.id);
+  const r = await fetch('/api/delete/plan', {method: 'POST', body});
+  const plan = await r.json().catch(() => ({}));
+  if (!r.ok) { say('err', (plan.detail && plan.detail.message) || `失败：HTTP ${r.status}`); return; }
+
+  dialog(`删除「${node.name}」`, dlg => {
+    dlg.append(el('div', 'msg err',
+      '删除是硬删：不进回收站，不可撤销，并且会同步删掉设备上的文件。\n' +
+      '设备端如果对这些文档有本地变更，下次同步可能把它们原 UUID 推回来（复活）。'));
+    dlg.append(el('div', null, `将删除 ${plan.items.length} 项（先深后浅）：`));
+    const list = el('div', 'kids');
+    for (const item of plan.items) {
+      const line = item.kind === 'folder'
+        ? `📁 ${item.name}/`
+        : `· ${item.name}  [${item.type || '?'}, ${kb(item.size)}]`;
+      list.append(el('div', 'node', '  '.repeat(item.depth) + line));
+    }
+    dlg.append(list);
+  }, '确认删除', async () => {
+    const form = new FormData();
+    form.append('id', node.id);
+    for (const i of plan.ids) form.append('ids', i);
+    const res = await fetch('/api/delete', {method: 'POST', body: form});
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = d.detail || {};
+      say('err', detail.reason === 'tree_changed'
+        ? `${detail.message}\n（多半是设备同步动过这棵子树，重新点一次删除再看一遍清单）`
+        : (detail.message || `失败：HTTP ${res.status}`));
+      await load();
+      return;
+    }
+    reportDeleted(node.name, d);
+    await load();
+  });
+}
+
+function reportDeleted(name, result) {
+  const box = el('div', 'msg ' + (result.residue.length ? 'err' : 'ok'));
+  box.textContent = result.residue.length
+    ? `已删 ${result.deleted.length} 项，但复查发现 ${result.residue.length} 项还在树上：${result.residue.join(', ')}`
+    : `✓ 已删除「${name}」共 ${result.deleted.length} 项，删完立刻复查未见残留。\n` +
+      '注意：复活要等设备同步一轮才看得出来，过几分钟点下面这个按钮再查一次。';
+  const btn = el('button', null, '复活复查');
+  btn.onclick = async () => {
+    const form = new FormData();
+    for (const i of result.deleted) form.append('ids', i);
+    const r = await fetch('/api/resurrection', {method: 'POST', body: form});
+    const d = await r.json().catch(() => ({back: []}));
+    say(d.back.length ? 'err' : 'ok', d.back.length
+      ? `⚠ ${d.back.length} 项被设备端原 UUID 推回来了：\n` +
+        d.back.map(b => `  ${b.id}  ${b.path ? b.path + '/' : ''}${b.name}`).join('\n') +
+        '\n再删一次，并且删完别在设备上碰它。'
+      : '✓ 复查：这些 UUID 没有回到树上。');
+    await load();
+  };
+  box.append(document.createElement('br'), btn);
+  document.getElementById('log').append(box);
 }
 
 let TREE = {entries: [], trash: []};

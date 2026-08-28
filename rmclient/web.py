@@ -15,7 +15,15 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 
 from .api import RmApiError, RmClient
-from .manage import create_folder, move, rename
+from .manage import (
+    TreeChanged,
+    check_resurrection,
+    create_folder,
+    delete_subtree,
+    move,
+    plan_delete,
+    rename,
+)
 from .models import Folder, PathError, Tree, mailbox_ids, walk
 from .push import DuplicateName, push
 from .validate import ValidationError
@@ -118,6 +126,34 @@ def api_move(
 ) -> dict:
     _manage(lambda: move(client, id, parent))
     return {"id": id, "parent": parent}
+
+
+@app.post("/api/delete/plan")
+def api_delete_plan(id: str = Form(...), client: RmClient = Depends(get_client)) -> dict:
+    """这一刀会删掉的每一项，先深后浅。对话框必须把整棵子树摊给用户看。"""
+    items = _manage(lambda: plan_delete(client.list_tree(), id))
+    return {"items": items, "ids": [i["id"] for i in items]}
+
+
+@app.post("/api/delete")
+def api_delete(
+    id: str = Form(...), ids: list[str] = Form(...), client: RmClient = Depends(get_client)
+) -> dict:
+    """硬删整棵子树。ids 是用户在对话框里确认过的那份清单，只用来比对；
+    真正的白名单是服务端此刻重算出来的（中间树变了就 409 让用户重看）。"""
+    try:
+        return _manage(lambda: delete_subtree(client, id, ids))
+    except TreeChanged as exc:
+        raise HTTPException(
+            409,
+            {"reason": "tree_changed", "message": str(exc), "added": exc.added, "removed": exc.removed},
+        ) from exc
+
+
+@app.post("/api/resurrection")
+def api_resurrection(ids: list[str] = Form(...), client: RmClient = Depends(get_client)) -> dict:
+    """复活复查：删掉的 UUID 有没有被设备端原样推回来（REPORT §9.2）。"""
+    return {"back": check_resurrection(client, ids)}
 
 
 @app.get("/tree", response_class=HTMLResponse)

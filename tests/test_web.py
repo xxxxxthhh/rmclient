@@ -232,3 +232,74 @@ def test_move_refuses_an_unknown_id(web):
     r = client.post("/api/move", data={"id": "ghost", "parent": "books"})
     assert r.status_code == 404
     assert "PUT" not in [x.method for x in seen]
+
+
+# ---- 删除 ----------------------------------------------------------
+
+
+def test_delete_plan_lists_the_whole_subtree_deepest_first(web):
+    r = web[0].post("/api/delete/plan", data={"id": "books"})
+    assert r.status_code == 200
+    plan = r.json()
+    assert set(plan["ids"]) == {"books", "b1", "cs"}
+    assert plan["ids"][-1] == "books"  # 父目录最后删
+    assert {i["name"] for i in plan["items"]} == {"Books", "Book One", "CS"}
+
+
+def test_delete_plan_refuses_the_mailbox(web):
+    client, seen = web
+    r = client.post("/api/delete/plan", data={"id": "mb"})
+    assert r.status_code == 403 and r.json()["detail"]["reason"] == "mailbox"
+    assert [x.method for x in seen] == ["GET"]
+
+
+def test_delete_removes_the_subtree_and_rechecks(live_web):
+    client, seen, api = live_web
+    plan = client.post("/api/delete/plan", data={"id": "books"}).json()
+    r = client.post("/api/delete", data={"id": "books", "ids": plan["ids"]})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["deleted"][-1] == "books" and body["residue"] == []
+    assert [x.url.path for x in seen if x.method == "DELETE"] == [
+        f"/ui/api/documents/{i}" for i in body["deleted"]
+    ]
+    assert [n.id for n in api.list_tree().entries] == ["mb", "loose"]
+
+
+def test_delete_reports_residue_when_the_delete_did_not_stick(web):
+    # 默认假云的 DELETE 是空操作 —— 用来证明删完那次复查真的在查。
+    client, _ = web
+    plan = client.post("/api/delete/plan", data={"id": "books"}).json()
+    body = client.post("/api/delete", data={"id": "books", "ids": plan["ids"]}).json()
+    assert sorted(body["residue"]) == ["b1", "books", "cs"]
+
+
+def test_delete_refuses_when_the_confirmed_list_no_longer_matches(web):
+    # 计划与确认之间设备同步塞了个新文件进来：让用户重看一遍，别闷头删。
+    client, seen = web
+    r = client.post("/api/delete", data={"id": "books", "ids": ["books", "b1"]})
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["reason"] == "tree_changed" and detail["added"] == ["cs"]
+    assert "DELETE" not in [x.method for x in seen]
+
+
+def test_delete_refuses_the_mailbox_subtree(web):
+    client, seen = web
+    r = client.post("/api/delete", data={"id": "mb", "ids": ["mb", "mb-doc"]})
+    assert r.status_code == 403
+    assert "DELETE" not in [x.method for x in seen]
+
+
+def test_resurrection_reports_ids_that_came_back(web):
+    r = web[0].post("/api/resurrection", data={"ids": ["b1", "ghost"]})
+    assert r.status_code == 200
+    back = r.json()["back"]
+    assert [b["id"] for b in back] == ["b1"] and back[0]["path"] == "Books"
+
+
+def test_resurrection_is_quiet_when_nothing_came_back(live_web):
+    client, _, _ = live_web
+    plan = client.post("/api/delete/plan", data={"id": "books"}).json()
+    client.post("/api/delete", data={"id": "books", "ids": plan["ids"]})
+    assert client.post("/api/resurrection", data={"ids": plan["ids"]}).json()["back"] == []
