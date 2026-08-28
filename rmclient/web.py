@@ -294,6 +294,10 @@ def api_download(doc_id: str, client: RmClient = Depends(get_client)) -> Respons
 
     信箱内的文档也能下（只读）。已知边界：整份要在内存里过一遍，而且导出还压着
     120s 读超时与 Cloudflare 边缘 100MB 上限（CLAUDE.md 纪律 6）——大文件会撞。
+
+    注意：设备上批注过的 epub，包里除了原 epub 还有一份设备生成的 `.pdf` 渲染件
+    （真实库里实测到）。这里给的是 `.content` 声明的那个原件，**不含批注**；要批注
+    得拿整包 rmdoc。
     """
     node = _doc_node(client, doc_id)
     payload, ext = original_bytes(client.export_rmdoc(doc_id))
