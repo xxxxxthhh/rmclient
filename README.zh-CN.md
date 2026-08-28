@@ -68,6 +68,30 @@ uv run python scripts/dump_tree.py    # 打印整棵树，含回收站
 
 凭据只从环境变量或磁盘读，不进日志、不打印、不进仓库。
 
+## 界面语言
+
+Web 界面自带**英文（默认）与中文**，语言是每个浏览器自己的选择，服务端不受影响。
+
+- 三个页面的顶栏都有 `EN / 中文` 切换。选择存在 `localStorage` 的
+  `rmclient.lang` 里，三页一致。
+- 没存过时按 `navigator.language` 判断：`zh` 开头给中文，其余给英文。
+- CLI 只有英文；服务端错误消息也是英文。页面按错误的 `reason` 码给本地化主提示，
+  下面附上服务端自己的 `message` 作详情。
+- 徽章里的文档类型（`notebook` / `epub` / `pdf`）是数据不是界面文案，不翻译。
+
+### 加一门语言
+
+全部在 [`rmclient/pages/i18n.js`](rmclient/pages/i18n.js) 一个文件里，没有构建步骤：
+
+1. 把 `STRINGS` 里整个 `"en"` 块复制一份，键改成你的 BCP-47 基础标签
+   （`"de"`、`"ja"`……），再翻译值。键一个都不能少，`{大括号}` 占位符原样保留。
+2. 把 `"lang.label"` 设成你想显示在切换按钮上的文字。切换控件是按
+   `Object.keys(STRINGS)` 生成的，别处不用改。
+3. 想让它被自动识别，就在 `detect()` 里加上你的标签。不加也能从切换控件选到。
+
+`STRINGS` 特意写成严格 JSON：`uv run pytest tests/test_i18n.py` 会把它解析出来，
+任何一门语言少了键、或者占位符和英文对不上，测试就红。
+
 ## 锁定目录
 
 锁定目录是指某个**根级**目录，它整棵子树只读：
@@ -147,6 +171,7 @@ rmclient 依赖的端点，以及每个端点各自的坑。完整证据在
 | M3 | 笔记预览：用 rmscene 解析 `.rm` v6，逐页渲染 SVG，整本导出 PDF。 |
 | v1 | 内容管理器：搜索与排序、多选批量移动与删除、原件/整包下载、全库重名报告（§12）。 |
 | UI | 三个页面统一做了一轮呈现层：CSS token 设计体系与暗色模式、统一顶栏、吸附工具栏、底部悬浮批量条、toast、骨架态、键盘翻页。 |
+| i18n | 默认英文、中文完整保留：三页共用一份字符串表，顶栏可切换，服务端错误码给本地化主提示，CLI 全英文。 |
 
 ## 仓库结构
 
@@ -163,7 +188,8 @@ rmclient/
   cli.py        rmclient push / serve
   web.py        FastAPI 路由
   pages/        push.html（拖拽推书）、tree.html（管理器）、
-                preview.html（笔记预览）、app.css（共用设计 token）
+                preview.html（笔记预览）、app.css（共用设计 token）、
+                i18n.js（三页共用的字符串表与 t()）
 scripts/        dump_tree.py —— 只读打印文档树
 spike/          可行性验证代码与 REPORT.md（端点契约）
 tests/          离线测试

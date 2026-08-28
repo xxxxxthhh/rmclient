@@ -74,6 +74,38 @@ set — it will never quietly connect somewhere unexpected.
 Credentials are read from the environment or from disk and are never logged,
 never printed, and never written to the repository.
 
+## Localization
+
+The web UI ships in **English (default) and Chinese**, and the language is a
+per-browser choice — nothing on the server changes.
+
+- Every page has an `EN / 中文` switch in the top bar. Your pick is stored in
+  `localStorage` under `rmclient.lang` and applies to all three pages.
+- With nothing stored, the language comes from `navigator.language`: anything
+  starting with `zh` gets Chinese, everything else gets English.
+- The CLI is English only; server error messages are English too. The pages
+  turn the error's `reason` code into a localized headline and show the
+  server's own `message` underneath as the detail.
+- Document types on badges (`notebook`, `epub`, `pdf`) are data, not UI text,
+  and are never translated.
+
+### Adding a language
+
+Everything lives in [`rmclient/pages/i18n.js`](rmclient/pages/i18n.js) — one
+file, no build step:
+
+1. Copy the whole `"en"` block inside `STRINGS`, rename the key to your BCP-47
+   base tag (`"de"`, `"ja"`, …), and translate the values. Keep every key, and
+   keep the `{braces}` placeholders exactly as they are.
+2. Set `"lang.label"` to the text you want on the switcher button. The switcher
+   is generated from `Object.keys(STRINGS)`, so nothing else needs editing.
+3. Optionally teach `detect()` about your tag for auto-detection. Without that,
+   your language is still reachable from the switcher.
+
+`STRINGS` is written as strict JSON on purpose: `uv run pytest
+tests/test_i18n.py` parses it and fails if any dictionary is missing a key or a
+placeholder that English has.
+
 ## Locked folders
 
 A locked folder is a root-level folder whose entire subtree is read-only:
@@ -166,6 +198,7 @@ contract findings live in [`spike/REPORT.md`](spike/REPORT.md).
 | M3 | Notebook preview: `.rm` v6 parsing via rmscene, per-page SVG rendering, whole-notebook PDF export. |
 | v1 | The content manager: search and sort, multi-select batch move and delete, original/package download, whole-library duplicate report (§12). |
 | UI | A design pass across all three pages: CSS-token design system with dark mode, one shared topbar, sticky toolbar, floating batch dock, toasts, skeletons, keyboard paging. |
+| i18n | English by default with Chinese kept complete: one shared string table, a top-bar language switch, localized headlines for server error codes, and an English CLI. |
 
 ## Repository layout
 
@@ -182,7 +215,8 @@ rmclient/
   cli.py        rmclient push / serve
   web.py        FastAPI routes
   pages/        push.html (drag and drop), tree.html (manager),
-                preview.html (notebook viewer), app.css (shared design tokens)
+                preview.html (notebook viewer), app.css (shared design tokens),
+                i18n.js (string table + t(), shared by all three pages)
 scripts/        dump_tree.py — read-only tree dump
 spike/          feasibility work and REPORT.md, the endpoint contract
 tests/          offline test suite
