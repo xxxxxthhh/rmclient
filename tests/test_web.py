@@ -639,3 +639,23 @@ def test_tree_feedback_goes_to_dismissible_toasts(web):
     html = web[0].get("/tree").text
     assert 'id="toasts"' in html and "aria-live=\"polite\"" in html
     assert "if (cls !== 'err') setTimeout" in html  # 报错不自动消失
+
+
+def test_push_page_has_a_dropzone_button_with_progress_cards(web):
+    html = web[0].get("/")
+    text = html.text
+    assert 'type="button" id="drop" class="dropzone"' in text  # 可聚焦、可键盘触发
+    assert "newCard(file)" in text and "上传中" in text
+    assert "el('div', 'bar')" in text and ".bar i{" in text   # 上传中的进度条
+    assert ".dropzone.hot{" in text                            # 拖入高亮
+
+
+def test_push_page_keeps_the_duplicate_semantics(web):
+    text = web[0].get("/").text
+    assert "勾上「重名也传」再拖一次" in text
+    assert 'id="force"' in text and "force.checked ? 'true' : 'false'" in text
+
+
+def test_push_page_uses_the_same_toast_style_as_the_tree(web):
+    text = web[0].get("/").text
+    assert 'id="toasts"' in text and "if (cls !== 'err') setTimeout" in text
