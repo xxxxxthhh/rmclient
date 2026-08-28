@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 
 from .api import RmApiError, RmClient
+from .manage import create_folder, move, rename
 from .models import Folder, PathError, Tree, mailbox_ids, walk
 from .push import DuplicateName, push
 from .validate import ValidationError
@@ -80,6 +81,43 @@ def tree_json(tree: Tree) -> dict:
 @app.get("/api/tree")
 def api_tree(client: RmClient = Depends(get_client)) -> dict:
     return tree_json(client.list_tree())
+
+
+def _manage(action) -> dict:
+    """把策略层的拒绝翻译成 HTTP。信箱、空名、移进自己子孙都在这被挡住。"""
+    try:
+        return action()
+    except PermissionError as exc:
+        raise HTTPException(403, {"reason": "mailbox", "message": str(exc)}) from exc
+    except (PathError, LookupError) as exc:
+        raise HTTPException(404, {"reason": "not_found", "message": str(exc)}) from exc
+    except ValueError as exc:
+        raise HTTPException(400, {"reason": "invalid", "message": str(exc)}) from exc
+    except RmApiError as exc:
+        raise HTTPException(502, {"reason": "upstream", "message": str(exc)}) from exc
+
+
+@app.post("/api/folders")
+def api_create_folder(
+    name: str = Form(...), parent: str = Form(""), client: RmClient = Depends(get_client)
+) -> dict:
+    node = _manage(lambda: create_folder(client, name, parent))
+    return {"id": node.id, "name": node.name}
+
+
+@app.post("/api/rename")
+def api_rename(
+    id: str = Form(...), name: str = Form(...), client: RmClient = Depends(get_client)
+) -> dict:
+    return {"id": id, "name": _manage(lambda: rename(client, id, name))}
+
+
+@app.post("/api/move")
+def api_move(
+    id: str = Form(...), parent: str = Form(""), client: RmClient = Depends(get_client)
+) -> dict:
+    _manage(lambda: move(client, id, parent))
+    return {"id": id, "parent": parent}
 
 
 @app.get("/tree", response_class=HTMLResponse)
