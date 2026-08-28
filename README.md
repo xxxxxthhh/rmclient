@@ -45,9 +45,11 @@ You do not need an rmfakecloud server — or any credentials — to see what thi
 looks like:
 
 ```bash
-uv run python scripts/demo_serve.py          # → http://127.0.0.1:8001
-uv run python scripts/demo_serve.py --port 9000
+uvx rmclient demo                # → http://127.0.0.1:8001
+uvx rmclient demo --port 9000
 ```
+
+(from a clone: `uv run rmclient demo`)
 
 That starts the real web UI against an in-memory demo cloud. Uploading, moving,
 renaming, the delete plan, the resurrection re-check, the duplicate report,
@@ -69,28 +71,33 @@ easy to miss:
 
 ## Quickstart
 
-Requires Python 3.14 and [uv](https://docs.astral.sh/uv/).
+Install [uv](https://docs.astral.sh/uv/), then:
 
 ```bash
-git clone <this repo> && cd rmclient
-uv sync
-
-export RMCLIENT_URL=https://cloud.example.com
-export RMCLIENT_USER=you@example.com
-export RMCLIENT_PASSWORD_FILE=~/.config/rmclient/password   # or RMCLIENT_PASSWORD
-
-uv run rmclient serve            # → http://127.0.0.1:8000
+uvx rmclient demo            # try the UI offline, no server needed
+uvx rmclient setup           # point it at your rmfakecloud server
+uvx rmclient serve --open    # open your own library in the browser
 ```
 
-Read-only sanity check before anything else:
+> **Not on PyPI yet.** Those three commands work *after the PyPI release*. Until
+> then, run rmclient from a clone — see [Development](#development). The commands
+> themselves are identical apart from the `uv run` prefix.
 
-```bash
-uv run python scripts/dump_tree.py    # prints the whole tree, including the trash
-```
+`setup` asks for your server URL, e-mail and password, writes them to
+`~/.config/rmclient/config.toml` (the password goes to its own file, mode 600),
+and then signs in for real and reports how many entries your root holds — so you
+find out immediately whether it works, not on your first upload.
+
+Nothing is installed on your reMarkable or on the server, and no configuration
+is needed at all for `demo`.
 
 ## Configuration
 
-All configuration is environment variables. There is no config file.
+`rmclient setup` is the easy path. Everything it writes can also be set by hand.
+Sources are consulted in this order, and **taken as a whole** — rmclient never
+mixes credentials from one source with a URL from another:
+
+**1. Environment variables** — best for CI and containers:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -99,14 +106,30 @@ All configuration is environment variables. There is no config file.
 | `RMCLIENT_PASSWORD` | — | Password, used literally. |
 | `RMCLIENT_PASSWORD_FILE` | — | Path to a file holding the password; its contents are stripped. Use this **or** `RMCLIENT_PASSWORD`, not both. |
 | `RMCLIENT_LOCKED_FOLDERS` | `Mailbox` | Comma-separated **root-level** folder names to protect. Set to an empty string to lock nothing. |
+| `RMCLIENT_DATA_DIR` | XDG state dir | Where the deletion journal is kept. |
 
-If none of these are set, rmclient falls back to the local layout of its
-original deployment (documented in `CLAUDE.md`), and only when those files
-actually exist. Otherwise it refuses to start and tells you which variables to
-set — it will never quietly connect somewhere unexpected.
+**2. `~/.config/rmclient/config.toml`** (`$XDG_CONFIG_HOME` wins if set):
+
+```toml
+url = "https://cloud.example.com"
+user = "you@example.com"
+# password_file = "/some/other/path"   # default: ~/.config/rmclient/password
+```
+
+The password is never stored here — it lives in its own file. Putting a
+`password` key in `config.toml` is a hard error, not a silent fallback.
+
+**3. A local fallback** for the deployment this was originally built against
+(documented in `CLAUDE.md`), used only when those files actually exist.
+
+If a source is present but incomplete — say `config.toml` names a server but no
+user — rmclient stops and says so rather than borrowing credentials from the
+next source down. Pointing one server's URL at another server's password is
+exactly the accident that guard exists to prevent.
 
 Credentials are read from the environment or from disk and are never logged,
-never printed, and never written to the repository.
+never printed, and never written to the repository. The deletion journal lives
+in `~/.local/state/rmclient/deleted.json`.
 
 ## Localization
 
@@ -164,7 +187,7 @@ evidence, are in [`spike/REPORT.md`](spike/REPORT.md).
   cascade), and only ever deletes UUIDs from an explicit allow-list.
 - **Deleted documents can come back.** If the device has local changes for a
   document, its next sync pushes that document back with the same UUID.
-  rmclient records every deletion in `var/deleted.json` (never committed) and
+  rmclient records every deletion in `~/.local/state/rmclient/deleted.json` and
   keeps a "check for resurrection" panel on the tree page, because the race
   only becomes visible a sync cycle later.
 - **Upload correctness is the client's job.** The server dispatches purely on
@@ -234,6 +257,7 @@ contract findings live in [`spike/REPORT.md`](spike/REPORT.md).
 | UI | A design pass across all three pages: CSS-token design system with dark mode, one shared topbar, sticky toolbar, floating batch dock, toasts, skeletons, keyboard paging. |
 | i18n | English by default with Chinese kept complete: one shared string table, a top-bar language switch, localized headlines for server error codes, and an English CLI. |
 | demo | An offline demo: the real UI on an in-memory cloud with a public-domain dataset, so the project can be tried — and screenshotted — without a server. |
+| v0.2 | Installable: `rmclient demo / setup / serve --open`, a `config.toml` written by an interactive wizard, state under XDG, and a test that proves the wheel really ships the pages. No clone, no environment variables. |
 
 ## Repository layout
 
@@ -246,19 +270,33 @@ rmclient/
   push.py       target checks, duplicate detection, upload
   manage.py     create / rename / move / delete policy, deletion plans
   render.py     rmdoc → pages → SVG / PDF, original extraction
-  journal.py    deletion records in var/deleted.json
-  cli.py        rmclient push / serve
+  journal.py    deletion records, kept in the XDG state directory
+  wizard.py     the `rmclient setup` wizard
+  demo.py       the in-memory demo cloud and its public-domain dataset
+  cli.py        rmclient push / serve / setup / demo
   web.py        FastAPI routes
   pages/        push.html (drag and drop), tree.html (manager),
                 preview.html (notebook viewer), app.css (shared design tokens),
                 i18n.js (string table + t(), shared by all three pages)
-scripts/        demo_serve.py — offline demo UI on an in-memory cloud
+scripts/        demo_serve.py — thin shim, kept for older docs; use `rmclient demo`
                 dump_tree.py  — read-only tree dump
 spike/          feasibility work and REPORT.md, the endpoint contract
 tests/          offline test suite
 ```
 
 ## Development
+
+Running from a clone — and the only way to run it before the PyPI release:
+
+```bash
+git clone https://github.com/xxxxxthhh/rmclient && cd rmclient
+uv sync
+
+uv run rmclient demo             # offline demo, no configuration
+uv run rmclient setup            # configure your own server
+uv run rmclient serve --open
+uv run python scripts/dump_tree.py   # read-only dump of the whole tree
+```
 
 ```bash
 uv run pytest        # offline test suite; never touches a real server

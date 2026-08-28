@@ -40,9 +40,11 @@ rmclient serve --port 8000                 # 起 Web 界面
 没有 rmfakecloud、也没有任何凭据，照样能看到它长什么样：
 
 ```bash
-uv run python scripts/demo_serve.py          # → http://127.0.0.1:8001
-uv run python scripts/demo_serve.py --port 9000
+uvx rmclient demo                # → http://127.0.0.1:8001
+uvx rmclient demo --port 9000
 ```
+
+（从克隆的仓库里跑：`uv run rmclient demo`）
 
 这会用一个内存假云把真实的 Web 界面起起来。上传、移动、重命名、删除计划、
 复活复查、重名检测、笔记预览与 PDF 导出，走的都是和真实部署完全相同的代码，
@@ -60,28 +62,29 @@ uv run python scripts/demo_serve.py --port 9000
 
 ## 快速上手
 
-需要 Python 3.14 和 [uv](https://docs.astral.sh/uv/)。
+装好 [uv](https://docs.astral.sh/uv/)，然后：
 
 ```bash
-git clone <本仓库> && cd rmclient
-uv sync
-
-export RMCLIENT_URL=https://cloud.example.com
-export RMCLIENT_USER=you@example.com
-export RMCLIENT_PASSWORD_FILE=~/.config/rmclient/password   # 或者 RMCLIENT_PASSWORD
-
-uv run rmclient serve            # → http://127.0.0.1:8000
+uvx rmclient demo            # 离线试玩界面，不需要服务器
+uvx rmclient setup           # 指向你自己的 rmfakecloud
+uvx rmclient serve --open    # 在浏览器里打开自己的书库
 ```
 
-动手之前先跑个只读的确认能连通：
+> **还没发到 PyPI。** 上面三条要**等 PyPI 发布之后**才能用。在那之前请从克隆
+> 的仓库里跑，见 [开发](#开发)——除了前缀 `uv run`，命令本身一模一样。
 
-```bash
-uv run python scripts/dump_tree.py    # 打印整棵树，含回收站
-```
+`setup` 问你服务器地址、邮箱、密码，写进 `~/.config/rmclient/config.toml`
+（密码单独一个文件，权限 600），然后**真登录一次**并报告根级有多少条目——
+配得对不对当场就知道，不用等到第一次上传才发现。
+
+设备上和服务器上都不装任何东西；`demo` 更是完全不需要配置。
 
 ## 配置
 
-配置全部走环境变量，没有配置文件。
+`rmclient setup` 是省事的那条路，它写的东西也都能手工设置。三层来源按下面的
+顺序取用，而且**按来源整体取用**——绝不会拿这一层的凭据去配那一层的地址：
+
+**1. 环境变量**，CI 和容器里最直接：
 
 | 变量 | 默认 | 含义 |
 |---|---|---|
@@ -90,12 +93,28 @@ uv run python scripts/dump_tree.py    # 打印整棵树，含回收站
 | `RMCLIENT_PASSWORD` | — | 密码，按原样使用。 |
 | `RMCLIENT_PASSWORD_FILE` | — | 存密码的文件路径，读入后 strip。与 `RMCLIENT_PASSWORD` **二选一**，不能都设。 |
 | `RMCLIENT_LOCKED_FOLDERS` | `Mailbox` | 要保护的**根级**目录名，逗号分隔。设成空串表示一个都不锁。 |
+| `RMCLIENT_DATA_DIR` | XDG state 目录 | 删除记录存放的位置。 |
 
-一个都不设时，rmclient 会回落到它原始部署的本机布局（细节在 `CLAUDE.md`），
-且只在那些文件确实存在时才回落。否则直接拒绝启动并告诉你该设哪几个变量——
-绝不会悄悄连到一个你没想到的地方去。
+**2. `~/.config/rmclient/config.toml`**（设了 `$XDG_CONFIG_HOME` 就听它的）：
 
-凭据只从环境变量或磁盘读，不进日志、不打印、不进仓库。
+```toml
+url = "https://cloud.example.com"
+user = "you@example.com"
+# password_file = "/some/other/path"   # 默认 ~/.config/rmclient/password
+```
+
+密码永远不放在这里，它单独一个文件。往 `config.toml` 里写 `password` 键会直接
+报错，不会悄悄放行。
+
+**3. 本机回落**：本项目最初那套部署的布局（细节在 `CLAUDE.md`），且只在那些
+文件确实存在时才用。
+
+某一层在场但配了一半——比如 `config.toml` 写了服务器却没写 user——rmclient 会
+停下来说清楚，而不是往下一层借凭据。拿 A 服务器的地址配 B 服务器的密码，正是
+这道守卫要防的事故。
+
+凭据只从环境变量或磁盘读，不进日志、不打印、不进仓库。删除记录落在
+`~/.local/state/rmclient/deleted.json`。
 
 ## 界面语言
 
@@ -141,9 +160,9 @@ Web 界面自带**英文（默认）与中文**，语言是每个浏览器自己
   下次同步就把本地那份也丢掉。rmclient 在你确认之前会把整棵将被删除的子树列
   出来，按先深后浅删（服务端不级联），并且只删显式白名单里的 UUID。
 - **删掉的文档可能复活。** 如果设备上对某个文档有本地改动，它下次同步会把这个
-  文档按**原 UUID** 推回来。rmclient 把每次删除记进 `var/deleted.json`（不进
-  git），并在树页面常驻一个「复活复查」面板——这个竞态要等一轮设备同步之后才
-  看得出来。
+  文档按**原 UUID** 推回来。rmclient 把每次删除记进
+  `~/.local/state/rmclient/deleted.json`，并在树页面常驻一个「复活复查」面板
+  ——这个竞态要等一轮设备同步之后才看得出来。
 - **上传对不对，责任全在客户端。** 服务端**只看文件名后缀**（`.pdf`/`.epub`/
   `.rmdoc`）分派，完全不看内容；遇到不认识的后缀回的是 HTTP 500，真正的原因在
   响应体里。rmclient 在本机同时校验后缀**和**内容（EPUB 的 OCF 结构、PDF/zip
@@ -202,6 +221,7 @@ rmclient 依赖的端点，以及每个端点各自的坑。完整证据在
 | UI | 三个页面统一做了一轮呈现层：CSS token 设计体系与暗色模式、统一顶栏、吸附工具栏、底部悬浮批量条、toast、骨架态、键盘翻页。 |
 | i18n | 默认英文、中文完整保留：三页共用一份字符串表，顶栏可切换，服务端错误码给本地化主提示，CLI 全英文。 |
 | demo | 离线 demo：真界面 + 内存假云 + 公版书数据集，没有服务器也能试玩，也能安全截图。 |
+| v0.2 | 装好就能用：`rmclient demo / setup / serve --open`，交互向导写 `config.toml`，状态归 XDG，外加一条证明 wheel 真的带着页面资源的测试。不用克隆，不用环境变量。 |
 
 ## 仓库结构
 
@@ -214,19 +234,33 @@ rmclient/
   push.py       目标校验、重名检测、上传
   manage.py     新建/重命名/移动/删除的策略与删除计划
   render.py     rmdoc → 页 → SVG / PDF，以及原件取出
-  journal.py    删除记录，落在 var/deleted.json
-  cli.py        rmclient push / serve
+  journal.py    删除记录，落在 XDG state 目录
+  wizard.py     `rmclient setup` 向导
+  demo.py       内存假云与公版书数据集
+  cli.py        rmclient push / serve / setup / demo
   web.py        FastAPI 路由
   pages/        push.html（拖拽推书）、tree.html（管理器）、
                 preview.html（笔记预览）、app.css（共用设计 token）、
                 i18n.js（三页共用的字符串表与 t()）
-scripts/        demo_serve.py —— 内存假云上的离线 demo 界面
+scripts/        demo_serve.py —— 薄壳，为老文档保留；新写法用 `rmclient demo`
                 dump_tree.py  —— 只读打印文档树
 spike/          可行性验证代码与 REPORT.md（端点契约）
 tests/          离线测试
 ```
 
 ## 开发
+
+从克隆的仓库里跑——PyPI 发布之前也只有这一条路：
+
+```bash
+git clone https://github.com/xxxxxthhh/rmclient && cd rmclient
+uv sync
+
+uv run rmclient demo             # 离线 demo，不需要任何配置
+uv run rmclient setup            # 配置你自己的服务器
+uv run rmclient serve --open
+uv run python scripts/dump_tree.py   # 只读打印整棵树
+```
 
 ```bash
 uv run pytest        # 离线测试，全程不碰真实服务器
