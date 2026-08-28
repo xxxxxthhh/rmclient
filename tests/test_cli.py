@@ -107,3 +107,19 @@ def test_push_force_uploads_and_warns_about_the_copies(fake_cloud, tmp_path, cap
     out = capsys.readouterr().out
     assert "同名书" in out
     assert [r.url.path for r in fake_cloud][-1] == "/ui/api/documents/upload"
+
+
+def test_missing_configuration_prints_one_line_not_a_traceback(monkeypatch, tmp_path, capsys):
+    from rmclient import config
+
+    for key in (config.ENV_URL, config.ENV_USER, config.ENV_PASSWORD, config.ENV_PASSWORD_FILE):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(config, "FALLBACK_ENV_FILE", tmp_path / "nope/.env")
+    monkeypatch.setattr(config, "FALLBACK_PASSWORD_FILE", tmp_path / "nope/password")
+    book = tmp_path / "Book.epub"
+    book.write_bytes(tiny_epub())
+
+    assert main(["push", str(book)]) == 2
+    err = capsys.readouterr().err
+    assert "配置有问题" in err and config.ENV_USER in err
+    assert "Traceback" not in err

@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from .api import RmApiError, RmClient
-from .config import locked_folders
+from .config import ConfigError, base_url, load_credentials, locked_folders
 from .models import Folder, PathError, locked_label, mailbox_ids, resolve_path
 from .push import DuplicateName, push, visible_name
 from .validate import ValidationError
@@ -90,6 +90,9 @@ def cmd_serve(args) -> int:
 
     from .web import app
 
+    # 先把配置读通再起服务：不然错要等到第一个请求才以 500 的形式冒出来。
+    load_credentials()
+    print(f"rmclient → {base_url()}  （锁定目录：{', '.join(locked_folders()) or '无'}）")
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
 
@@ -110,7 +113,12 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_serve)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except ConfigError as exc:
+        # 配置问题给一句人话，不甩 traceback。
+        print(f"配置有问题：{exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
