@@ -133,8 +133,10 @@ class RmClient:
         )
         return parse_write_response(r.json())
 
-    def move(self, doc_id: str, parent_id: str, name: str | None = None) -> None:
-        """移动/重命名。parent_id 为根级时传什么尚未实测，留给 M2。
+    def move(self, doc_id: str, parent_id: str = _ROOT_FOLDERS, name: str | None = None) -> None:
+        """移动/重命名。parent_id 传空串即根级（REPORT §11 实测，回查树确认）。
+
+        注意上传端点的根级 sentinel 是 "root"，这里是空串，两套写法别统一。
 
         name 无条件覆写：只想移动也必须把原名原样传回，漏传会把可见名置空
         （REPORT §9.1）。name=None 时先读树取原名，取不到就报错，绝不发空名。

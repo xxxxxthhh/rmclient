@@ -244,3 +244,26 @@ rmclient 库本身，顺带把 login / create_folder / upload / delete_many 的�
 
 本轮创建 6 个对象（1 沙箱目录 + 3 文档 + 2 同名子目录），按「先深后浅」全部删除，
 回查残留 **0** 项。全程未创建、未修改、未删除沙箱外的任何对象。
+
+## 11. 追记（2026-08-28，M2 契约补测：移动到根级的 `parentId`）
+
+跑法 `uv run python spike/move_root_spike.py`（根级沙箱 `rmclient-spike-402755db`，自清理；
+原始记录 `spike/out/move_root.json`）。M0 在 `api.move` 里留的开放问题：建目录用空串表示
+根级、上传用 `"root"`，移动认哪个没测过。
+
+**结论：`PUT /ui/api/documents` 的 `parentId` 用空串 `""` 表示根级。**
+
+| 步骤 | 请求 | 回查树里该文档的 `parent` |
+|---|---|---|
+| 上传到沙箱 | `parent=<sandbox>` | `<sandbox>` |
+| 移到根级 | `{"documentId":…,"parentId":"","name":<原名>}` | **`""`（根级）** |
+| 移回沙箱 | `parentId=<sandbox>` | `<sandbox>` |
+
+判据是**回查树里的实际 `parent`**，不是状态码 —— 服务端完全可能 200 但什么都没做，
+所以每一步都重读了树。可见名三次回查全程保持不变（`name` 原样回传，§9.1 的覆写规则
+在根级路径上同样成立）。
+
+`"root"` 这个 sentinel **没测**：空串第一次就成了，脚本按顺序试到这里就停了。
+即上传端点的 `"root"` 与移动/建目录端点的 `""` 是两套写法，别统一。
+
+清理：创建 2 个对象（1 目录 + 1 文档），全部删除，回查残留 **0**。
