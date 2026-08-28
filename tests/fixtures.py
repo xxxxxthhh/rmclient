@@ -4,6 +4,7 @@
 """
 
 import io
+import json
 import zipfile
 
 import httpx
@@ -177,3 +178,82 @@ def stateful_handler(payload: dict | None = None):
         return httpx.Response(404, json={"error": "unexpected route"})
 
     return handler
+
+
+# ---- 合成 .rm / .rmdoc ---------------------------------------------
+
+
+def rm_line(points, color=None, tool=None, width=16):
+    """一笔：points 是 [(x, y), ...]（v6 坐标，x 以页面中线为 0）。"""
+    from rmscene import scene_items as si
+
+    return si.Line(
+        color=color if color is not None else si.PenColor.BLACK,
+        tool=tool if tool is not None else si.Pen.FINELINER_1,
+        points=[si.Point(x=x, y=y, speed=0, direction=0, width=width, pressure=100)
+                for x, y in points],
+        thickness_scale=2.0,
+        starting_length=0.0,
+    )
+
+
+def rm_page(lines) -> bytes:
+    """一页 .rm v6 字节：照 rmscene 的 simple_text_document 拼最小块序列。"""
+    import io
+    from uuid import uuid4
+
+    from rmscene import (
+        AuthorIdsBlock,
+        CrdtId,
+        CrdtSequenceItem,
+        LwwValue,
+        MigrationInfoBlock,
+        PageInfoBlock,
+        SceneGroupItemBlock,
+        SceneLineItemBlock,
+        SceneTreeBlock,
+        TreeNodeBlock,
+        write_blocks,
+    )
+    from rmscene import scene_items as si
+
+    blocks = [
+        AuthorIdsBlock(author_uuids={1: uuid4()}),
+        MigrationInfoBlock(migration_id=CrdtId(1, 1), is_device=True),
+        PageInfoBlock(loads_count=1, merges_count=0, text_chars_count=0, text_lines_count=0),
+        SceneTreeBlock(tree_id=CrdtId(0, 11), node_id=CrdtId(0, 0), is_update=True,
+                       parent_id=CrdtId(0, 1)),
+        TreeNodeBlock(si.Group(node_id=CrdtId(0, 1))),
+        TreeNodeBlock(si.Group(node_id=CrdtId(0, 11),
+                               label=LwwValue(timestamp=CrdtId(0, 12), value="Layer 1"))),
+        SceneGroupItemBlock(parent_id=CrdtId(0, 1), item=CrdtSequenceItem(
+            item_id=CrdtId(0, 13), left_id=CrdtId(0, 0), right_id=CrdtId(0, 0),
+            deleted_length=0, value=CrdtId(0, 11))),
+    ]
+    for i, line in enumerate(lines):
+        blocks.append(SceneLineItemBlock(parent_id=CrdtId(0, 11), item=CrdtSequenceItem(
+            item_id=CrdtId(1, 20 + i), left_id=CrdtId(0, 0), right_id=CrdtId(0, 0),
+            deleted_length=0, value=line)))
+    buf = io.BytesIO()
+    write_blocks(buf, blocks)
+    return buf.getvalue()
+
+
+def rmdoc(pages: dict, file_type: str = "notebook", listed=None, doc_id: str = "doc-uuid") -> bytes:
+    """一本 .rmdoc：{page_id: .rm 字节}，listed 是 .content 里的页序（可含已删页）。"""
+    import io
+
+    entries = listed if listed is not None else [{"id": pid} for pid in pages]
+    content = {
+        "fileType": file_type,
+        "formatVersion": 2,
+        "cPages": {"pages": entries},
+        "pageCount": len(entries),
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(f"{doc_id}.content", json.dumps(content))
+        z.writestr(f"{doc_id}.metadata", json.dumps({"visibleName": "Synthetic"}))
+        for page_id, data in pages.items():
+            z.writestr(f"{doc_id}/{page_id}.rm", data)
+    return buf.getvalue()

@@ -6,6 +6,7 @@ dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "python-multipart>=0.0.32",
+    "rmscene>=0.8.0",
     "uvicorn>=0.52.4",
 ]
 

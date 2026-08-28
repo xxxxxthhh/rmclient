@@ -132,11 +132,11 @@ wheels = [
 
 [[package]]
 name = "packaging"
-version = "26.3"
+version = "23.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/2b/9b9c33ffed44ee921d0967086d653047286054117d584f1b1a7c22ceaf7b/packaging-23.2.tar.gz", hash = "sha256:048fb0e9405036518eaaf48a55953c750c11e1a1b68e0dd1a9d62ed0c092cfc5", size = 146714, upload-time = "2023-10-01T13:50:05.279Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/1a/610693ac4ee14fcdf2d9bf3c493370e4f2ef7ae2e19217d7a237ff42367d/packaging-23.2-py3-none-any.whl", hash = "sha256:8c491190033a9af7e1d931d0b5dacc2ef47509b34dd0de67ed209b5203fc88c7", size = 53011, upload-time = "2023-10-01T13:50:03.745Z" },
 ]
 
 [[package]]
@@ -246,6 +246,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "python-multipart" },
+    { name = "rmscene" },
     { name = "uvicorn" },
 ]
 
@@ -260,6 +261,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "python-multipart", specifier = ">=0.0.32" },
+    { name = "rmscene", specifier = ">=0.8.0" },
     { name = "uvicorn", specifier = ">=0.52.4" },
 ]
 
@@ -267,6 +269,18 @@ requires-dist = [
 dev = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pytest", specifier = ">=9.1.1" },
+]
+
+[[package]]
+name = "rmscene"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/de/dd/2ec964e1f5e007e3b6492e3aace7bfdb58422d6770a2cda08988068089bf/rmscene-0.8.0.tar.gz", hash = "sha256:db9417a6b8cc86e80c1be8cefa29cec24d4d49777433d49d1fc741773f10d5be", size = 23794, upload-time = "2026-04-05T14:56:59.883Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/bb/c98189fa471986c13acb35dbce444345e05d8b58096b4457c1c4b3494443/rmscene-0.8.0-py3-none-any.whl", hash = "sha256:78f2bb8a746ceb6428005aa5fcb576eb7cf10ad537d043c49659c950633b01d1", size = 26765, upload-time = "2026-04-05T14:56:58.525Z" },
 ]
 
 [[package]]
