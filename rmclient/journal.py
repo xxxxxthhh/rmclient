@@ -4,7 +4,8 @@
 （REPORT §9.2）。复活要等设备同步一轮——几分钟到几小时——那会儿页面早刷新过了，
 UUID 不能只活在浏览器内存里。
 
-文件是本地状态，不进 git（var/ 已在 .gitignore）。
+文件是本地状态：默认落在 XDG state 目录（~/.local/state/rmclient/deleted.json），
+不进 git，也不在包目录旁边——装成 wheel 之后那里根本不该写。
 """
 
 from __future__ import annotations
@@ -15,12 +16,14 @@ from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 
-from .config import DELETED_FILE
+from .config import deleted_file
 
 
 class DeletionJournal:
-    def __init__(self, path: Path = DELETED_FILE):
-        self.path = Path(path)
+    def __init__(self, path: Path | None = None):
+        # 默认路径在调用时算：装成 wheel 之后包目录旁边没有可写的地方，
+        # 而且 uvx 那种缓存目录一 clean 记录就没了（见 config.deleted_file）。
+        self.path = Path(path) if path is not None else deleted_file()
 
     def load(self) -> list[dict]:
         """没有文件、或者文件被人改坏了，都当空记录——复查是辅助手段，不该拦住主流程。"""

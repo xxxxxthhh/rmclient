@@ -1,20 +1,28 @@
 """服务器地址、凭据、锁定目录。
 
-优先读环境变量，任何 rmfakecloud 部署都能用：
+三层，**按来源整体取用**，不跨层拼装：
+
+    1. 环境变量        任何部署都能用，CI / 容器里最直接
+    2. 配置文件        ~/.config/rmclient/config.toml（XDG_CONFIG_HOME 优先），
+                       由 `rmclient setup` 写出，普通用户走这条
+    3. paperpal 回落   本机原有布局（见 CLAUDE.md），只在那些文件确实存在时才用
 
     RMCLIENT_URL             服务器地址（含协议）
     RMCLIENT_USER            登录用户名（邮箱）
     RMCLIENT_PASSWORD        密码；或者
     RMCLIENT_PASSWORD_FILE   存密码的文件（读入后 strip，二选一）
     RMCLIENT_LOCKED_FOLDERS  锁定的根级目录名，逗号分隔，默认 Mailbox
+    RMCLIENT_DATA_DIR        删除记录落盘的位置（默认 XDG state 目录）
 
-一个都没设时回落到本机原有的 paperpal 布局（见 CLAUDE.md），且**只在那些文件
-确实存在时**才回落——否则直接报错告诉你该设哪几个变量，绝不静默连错服务器。
+「整体取用」是有教训的：半套 env 配置绝不能悄悄借用下一层的凭据去连另一台
+服务器。配置文件同理——文件在场但没写 user 就报错，不往 paperpal 那层漏。
 
+密码永远单独存一个文件，config.toml 里出现明文密码直接报错。
 凭据只从环境或磁盘读，绝不进日志、不进 git（CLAUDE.md §凭据）。
 """
 
 import os
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,6 +31,7 @@ ENV_USER = "RMCLIENT_USER"
 ENV_PASSWORD = "RMCLIENT_PASSWORD"
 ENV_PASSWORD_FILE = "RMCLIENT_PASSWORD_FILE"
 ENV_LOCKED_FOLDERS = "RMCLIENT_LOCKED_FOLDERS"
+ENV_DATA_DIR = "RMCLIENT_DATA_DIR"
 
 # 默认锁定的根级目录：paperpal 的信箱。整树只读，写操作一律拒（CLAUDE.md 纪律 1）。
 DEFAULT_LOCKED_FOLDERS = ("Mailbox",)
@@ -34,12 +43,44 @@ FALLBACK_ENV_FILE = _PAPERPAL / ".env"
 FALLBACK_PASSWORD_FILE = _PAPERPAL / "secrets/rmfakecloud_password"
 _FALLBACK_USER_KEY = "RMFAKECLOUD_USER"
 
-# 本地状态（删除记录）。仓库内的 var/ 已在 .gitignore，不进 git。
-VAR_DIR = Path(__file__).resolve().parent.parent / "var"
-DELETED_FILE = VAR_DIR / "deleted.json"
+# ---- 目录（全部在调用时算，不在 import 时定死）----
+#
+# 装成 wheel 之后 __file__ 在 site-packages 里，任何「包目录旁边」的路径都是错的：
+# uvx 跑起来会写进 uv 的缓存目录，`uv cache clean` 一抹就没。所以状态走 XDG。
+
+
+def _xdg(env_key: str, default: str) -> Path:
+    base = os.environ.get(env_key, "").strip()
+    return (Path(base) if base else Path.home() / default) / "rmclient"
+
+
+def config_dir() -> Path:
+    return _xdg("XDG_CONFIG_HOME", ".config")
+
+
+def config_file() -> Path:
+    return config_dir() / "config.toml"
+
+
+def default_password_file() -> Path:
+    """setup 默认把密码写这儿。config.toml 里只存路径，不存密码本身。"""
+    return config_dir() / "password"
+
+
+def state_dir() -> Path:
+    if override := os.environ.get(ENV_DATA_DIR, "").strip():
+        return Path(override).expanduser()
+    return _xdg("XDG_STATE_HOME", ".local/state")
+
+
+def deleted_file() -> Path:
+    """删除记录。是本地状态不是配置，所以在 state 目录而不是 config 目录。"""
+    return state_dir() / "deleted.json"
+
 
 _HOWTO = (
-    f"set {ENV_URL}, {ENV_USER} and one of {ENV_PASSWORD} / {ENV_PASSWORD_FILE} "
+    "run `rmclient setup`, or set "
+    f"{ENV_URL}, {ENV_USER} and one of {ENV_PASSWORD} / {ENV_PASSWORD_FILE}, "
     "to point rmclient at your rmfakecloud server"
 )
 
@@ -53,6 +94,31 @@ class Credentials:
     user: str
     # repr=False：防止 print(creds) / 异常回溯把密码带进日志。
     password: str = field(repr=False)
+
+
+def read_config() -> dict:
+    """config.toml 的内容；文件不在就是空字典。
+
+    明文密码在这里被硬拒：写进 config.toml 的密码会跟着任何一次误分享走掉，
+    而单独的密码文件至少是 600 的。
+    """
+    path = config_file()
+    try:
+        raw = path.read_bytes()
+    except (FileNotFoundError, NotADirectoryError):
+        return {}
+    except OSError as exc:
+        raise ConfigError(f"cannot read {path}: {exc}") from exc
+    try:
+        data = tomllib.loads(raw.decode())
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+        raise ConfigError(f"{path} is not valid TOML: {exc}") from exc
+    if "password" in data:
+        raise ConfigError(
+            f"{path} must not contain a plaintext password — "
+            "put it in its own file and point `password_file` at it"
+        )
+    return data
 
 
 def _fallback_available() -> bool:
@@ -71,12 +137,14 @@ def _fallback_base_url() -> str | None:
 
 
 def base_url() -> str:
-    """环境变量优先；没有就回落，回落不成立直接报错。"""
+    """环境变量 → 配置文件 → paperpal 回落；一层都不成立就报错。"""
     if url := os.environ.get(ENV_URL, "").strip():
+        return url.rstrip("/")
+    if url := str(read_config().get("url", "")).strip():
         return url.rstrip("/")
     if _fallback_available() and (url := _fallback_base_url()):
         return url
-    raise ConfigError(f"{ENV_URL} is not set and no local fallback config exists — {_HOWTO}")
+    raise ConfigError(f"no server URL configured — {_HOWTO}")
 
 
 def locked_folders() -> tuple[str, ...]:
@@ -88,12 +156,33 @@ def locked_folders() -> tuple[str, ...]:
 
 
 def load_credentials() -> Credentials:
-    """环境变量优先，否则回落到 paperpal 布局。"""
+    """环境变量 → 配置文件 → paperpal 回落。**按来源整体取用**，不跨层拼装。"""
     if any(os.environ.get(key) for key in (ENV_USER, ENV_PASSWORD, ENV_PASSWORD_FILE)):
         return _credentials_from_env()
+    data = read_config()
+    if data:
+        # 配置文件在场就由它说了算。半套配置不许往下漏：否则 config.toml 指着
+        # 服务器 A，凭据却悄悄用了 paperpal 那套 B 的——正是 env 那层防的同一件事。
+        if not str(data.get("user", "")).strip():
+            raise ConfigError(f"{config_file()} has no `user` — run `rmclient setup`")
+        return _credentials_from_config(data)
     if _fallback_available():
         return _credentials_from_fallback()
     raise ConfigError(f"no credentials configured — {_HOWTO}")
+
+
+def _credentials_from_config(data: dict) -> Credentials:
+    """config.toml 的 user + password_file（不给就用默认那份）。"""
+    raw = str(data.get("password_file", "")).strip()
+    path = Path(raw).expanduser() if raw else default_password_file()
+    try:
+        # 密码文件多半带结尾换行，不 strip 会登录失败。
+        password = path.read_text().strip()
+    except OSError as exc:
+        raise ConfigError(f"cannot read the password file {path}: {exc}") from exc
+    if not password:
+        raise ConfigError(f"empty password in {path}")
+    return Credentials(str(data["user"]).strip(), password)
 
 
 def _credentials_from_env() -> Credentials:
