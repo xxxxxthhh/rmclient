@@ -17,9 +17,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
-# 根级唯一信箱，paperpal 的命脉（POSTBOX_FOLDER=Mailbox，按名字在根级解析）。
-# 整棵子树绝不触碰——任何遍历/批量操作必须显式排除（CLAUDE.md 纪律 1）。
-MAILBOX_NAME = "Mailbox"
+from .config import locked_folders
+
+# 锁定目录：按名字在**根级**解析，整棵子树只读（CLAUDE.md 纪律 1）。默认是
+# paperpal 的信箱 Mailbox，别的部署用 RMCLIENT_LOCKED_FOLDERS 改。嵌套的同名
+# 目录不算——锁的是根级那一个。
+def locked_label() -> str:
+    """报错文案里用：把配置的锁定目录名列出来，默认就是 Mailbox。"""
+    return ", ".join(locked_folders()) or "none configured"
 
 
 @dataclass
@@ -108,12 +113,13 @@ def parse_write_response(payload: dict | list) -> Node:
 
 
 def mailbox_roots(entries: Iterable[Node]) -> list[Folder]:
-    """所有根级、名字恰为 Mailbox 的目录。嵌套的同名目录不是信箱，不算。
+    """所有根级、名字在锁定名单里的目录。嵌套的同名目录不算——锁的是根级那一个。
 
     paperpal 的 find_postbox 要求根级信箱唯一，不唯一就 fail closed。这里不抛
-    （dump_tree 遇到怪树不该崩），改成全都算信箱：排除类助手宁可多排，不能漏排。
+    （dump_tree 遇到怪树不该崩），改成同名的全都算：排除类助手宁可多排，不能漏排。
     """
-    return [n for n in entries if isinstance(n, Folder) and n.name == MAILBOX_NAME]
+    names = set(locked_folders())
+    return [n for n in entries if isinstance(n, Folder) and n.name in names]
 
 
 def exclude_mailbox(entries: Iterable[Node]) -> list[Node]:

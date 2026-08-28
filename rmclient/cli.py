@@ -15,7 +15,8 @@ import sys
 from pathlib import Path
 
 from .api import RmApiError, RmClient
-from .models import MAILBOX_NAME, Folder, PathError, mailbox_ids, resolve_path
+from .config import locked_folders
+from .models import Folder, PathError, locked_label, mailbox_ids, resolve_path
 from .push import DuplicateName, push, visible_name
 from .validate import ValidationError
 
@@ -28,11 +29,11 @@ def resolve_target(entries: list, path: str | None) -> str:
     """
     if not path:
         return ""
-    if path.strip("/").split("/")[0] == MAILBOX_NAME:
-        raise PermissionError(f"refusing to push into the {MAILBOX_NAME} subtree")
+    if path.strip("/").split("/")[0] in locked_folders():
+        raise PermissionError(f"refusing to push into a locked folder ({locked_label()})")
     folder: Folder = resolve_path(entries, path)
     if folder.id in mailbox_ids(entries):
-        raise PermissionError(f"refusing to push into the {MAILBOX_NAME} subtree: {folder.id}")
+        raise PermissionError(f"refusing to push into a locked folder ({locked_label()}): {folder.id}")
     return folder.id
 
 

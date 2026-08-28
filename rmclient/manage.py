@@ -16,6 +16,7 @@ from .models import (
     Tree,
     find,
     is_descendant,
+    locked_label,
     mailbox_ids,
     subtree_ids,
     walk,
@@ -42,7 +43,7 @@ def check_name(name: str) -> str:
 
 def check_not_mailbox(tree: Tree, node_id: str) -> None:
     if node_id and node_id in mailbox_ids(tree.entries):
-        raise PermissionError(f"refusing to touch the Mailbox subtree: {node_id}")
+        raise PermissionError(f"refusing to touch a locked folder ({locked_label()}): {node_id}")
 
 
 def check_move(tree: Tree, node_id: str, parent_id: str) -> None:

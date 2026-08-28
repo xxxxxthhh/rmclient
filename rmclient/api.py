@@ -15,8 +15,18 @@ from collections.abc import Collection, Iterable
 
 import httpx
 
-from .config import BASE_URL, Credentials, load_credentials
-from .models import Node, Tree, find, mailbox_ids, parse_tree, parse_write_response, deepest_first
+from .config import Credentials, load_credentials
+from .config import base_url as config_base_url
+from .models import (
+    Node,
+    Tree,
+    deepest_first,
+    find,
+    locked_label,
+    mailbox_ids,
+    parse_tree,
+    parse_write_response,
+)
 from .validate import validate
 
 # 根级的 sentinel 两个端点不一样，别统一：folders 用空串，upload 用 "root"（REPORT §2）。
@@ -50,14 +60,14 @@ class RmClient:
     def __init__(
         self,
         credentials: Credentials | None = None,
-        base_url: str = BASE_URL,
+        base_url: str | None = None,
         *,
         transport: httpx.BaseTransport | None = None,
     ):
         self._creds = credentials or load_credentials()
         self._token: str | None = None
         self._client = httpx.Client(
-            base_url=base_url,
+            base_url=base_url or config_base_url(),
             timeout=httpx.Timeout(120.0, connect=10.0),
             follow_redirects=False,
             transport=transport,
@@ -110,7 +120,9 @@ class RmClient:
         if entries is None:
             entries = self.list_tree().entries
         if node_id in mailbox_ids(entries):
-            raise PermissionError(f"refusing to {what} the Mailbox subtree: {node_id}")
+            raise PermissionError(
+                f"refusing to {what} a locked folder ({locked_label()}): {node_id}"
+            )
 
     # ---- 读 --------------------------------------------------------
 
@@ -215,7 +227,9 @@ class RmClient:
             raise PermissionError(f"refusing to delete, not in the explicit allow-list: {not_allowed}")
         locked = mailbox_ids(entries)
         if in_mailbox := [i for i in ids if i in locked]:
-            raise PermissionError(f"refusing to touch the Mailbox subtree: {in_mailbox}")
+            raise PermissionError(
+                f"refusing to touch a locked folder ({locked_label()}): {in_mailbox}"
+            )
         ordered = deepest_first(ids, entries)
         for doc_id in ordered:
             self.delete(doc_id, allowed_ids=allowed_ids, entries=entries)

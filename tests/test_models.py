@@ -242,3 +242,37 @@ def test_is_descendant_covers_self_and_children():
     assert is_descendant(entries, "books", "books") is True
     assert is_descendant(entries, "books", "nested-doc") is True
     assert is_descendant(entries, "books", "loose") is False
+
+
+# ---- 锁定目录可配置（默认仍是 Mailbox）----------------------------
+
+
+def test_locked_folder_name_comes_from_the_configuration(monkeypatch):
+    payload = {
+        "Entries": [
+            {"id": "inbox", "name": "Inbox", "isFolder": True,
+             "children": [{"id": "kid", "name": "letter", "type": "notebook", "size": 1}]},
+            {"id": "mb", "name": "Mailbox", "isFolder": True, "children": []},
+        ]
+    }
+    entries = parse_tree(payload).entries
+    monkeypatch.setenv("RMCLIENT_LOCKED_FOLDERS", "Inbox")
+    assert mailbox_ids(entries) == {"inbox", "kid"}   # 换了名字，Mailbox 就不再锁
+    assert [n.id for n in exclude_mailbox(entries)] == ["mb"]
+
+
+def test_nothing_is_locked_when_the_list_is_empty(monkeypatch):
+    monkeypatch.setenv("RMCLIENT_LOCKED_FOLDERS", "")
+    assert mailbox_ids(tree().entries) == set()
+    assert len(exclude_mailbox(tree().entries)) == 3
+
+
+def test_several_folders_can_be_locked_at_once(monkeypatch):
+    monkeypatch.setenv("RMCLIENT_LOCKED_FOLDERS", "Mailbox,Books")
+    ids = mailbox_ids(tree().entries)
+    assert {"mb", "mb-doc", "books", "b1"} <= ids
+
+
+def test_the_default_is_still_mailbox_only():
+    # 我们自己的部署行为一丝不变，这条是硬纪律。
+    assert [f.name for f in mailbox_roots(tree().entries)] == ["Mailbox"]

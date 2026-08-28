@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 
 from .api import RmClient
-from .models import Document, Node, Tree, children_of, find, mailbox_ids
+from .models import Document, Node, Tree, children_of, find, locked_label, mailbox_ids
 
 
 class DuplicateName(Exception):
@@ -35,7 +35,7 @@ def check_target(tree: Tree, parent_id: str) -> None:
     Web 的下拉框过滤是展示逻辑，保护不了直接带着 id 打过来的请求——所以这里再查一次。
     """
     if parent_id and parent_id in mailbox_ids(tree.entries):
-        raise PermissionError(f"refusing to touch the Mailbox subtree: {parent_id}")
+        raise PermissionError(f"refusing to touch a locked folder ({locked_label()}): {parent_id}")
     children_of(tree.entries, parent_id)  # 不存在 / 不是目录会抛 PathError
 
 
