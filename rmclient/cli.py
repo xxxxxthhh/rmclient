@@ -4,7 +4,7 @@
     rmclient push book.epub --to Books/CS    # 按树上的可见名路径指定目录
     rmclient push book.epub --to Books --force   # 明知重名也要再传一份
     rmclient setup                           # 交互式写配置，随即验证连得上
-    rmclient serve                           # 起本地 Web
+    rmclient serve --open                    # 起本地 Web 并打开浏览器
     rmclient demo                            # 离线试玩，不需要服务器和凭据
 
 --to 只解析已存在的目录，不自动创建；找不到就报错并列候选（推错地方比报错糟得多）。
@@ -91,16 +91,48 @@ def cmd_push(args) -> int:
     return 0
 
 
+def local_url(host: str, port: int) -> str:
+    """给人点的地址。绑 0.0.0.0 时浏览器要开的是 127.0.0.1，不是那个通配地址。"""
+    return f"http://{'127.0.0.1' if host in ('0.0.0.0', '::', '') else host}:{port}/"
+
+
+def open_when_ready(server, url: str, timeout: float = 15.0) -> None:
+    """等 uvicorn 真起来再开浏览器。
+
+    先开的话用户第一眼看到的是「连接被拒」——比不自动开还糟。uvicorn.Server
+    起来之后会把 .started 置真，盯着它就行，不用去连自己的端口试探。
+    """
+    import threading
+    import time
+    import webbrowser
+
+    def wait() -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if server.started:
+                webbrowser.open(url)
+                return
+            time.sleep(0.05)
+
+    threading.Thread(target=wait, daemon=True).start()
+
+
 def cmd_serve(args) -> int:
     import uvicorn  # 延迟导入：push 不该为 Web 依赖买单
 
     from .web import app
 
     # 先把配置读通再起服务：不然错要等到第一个请求才以 500 的形式冒出来。
+    # --open 也必须排在这之后——配置错了还弹个浏览器出来指向空气最气人。
     load_credentials()
+    url = local_url(args.host, args.port)
     print(f"rmclient → {base_url()}  "
           f"(locked folders: {', '.join(locked_folders()) or 'none'})")
-    uvicorn.run(app, host=args.host, port=args.port)
+    print(f"open {url}")
+    server = uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port))
+    if args.open:
+        open_when_ready(server, url)
+    server.run()
     return 0
 
 
@@ -134,6 +166,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("serve", help="start the local web UI")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--open", action="store_true",
+                   help="open the web UI in your browser once the server is up")
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("setup", help="configure the server URL, e-mail and password")

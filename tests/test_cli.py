@@ -167,3 +167,77 @@ def test_the_help_text_is_english_too(capsys):
     with pytest.raises(SystemExit):
         main(["--help"])
     assert not CJK.search(capsys.readouterr().out)
+
+
+# ---- serve --open --------------------------------------------------
+
+
+def test_the_browser_url_points_at_a_host_you_can_actually_open():
+    from rmclient.cli import local_url
+
+    assert local_url("127.0.0.1", 8000) == "http://127.0.0.1:8000/"
+    assert local_url("localhost", 9000) == "http://localhost:9000/"
+    # 绑通配地址时浏览器不能开 http://0.0.0.0
+    assert local_url("0.0.0.0", 8000) == "http://127.0.0.1:8000/"
+    assert local_url("::", 8000) == "http://127.0.0.1:8000/"
+
+
+def test_the_browser_waits_until_the_server_is_actually_up(monkeypatch):
+    """先开浏览器的话用户第一眼是「连接被拒」，比不自动开还糟。"""
+    import threading
+
+    from rmclient.cli import open_when_ready
+
+    opened: list[str] = []
+    monkeypatch.setattr("webbrowser.open", opened.append)
+
+    class Server:
+        started = False
+
+    server = Server()
+    open_when_ready(server, "http://127.0.0.1:8000/")
+    for _ in range(20):                       # 还没起来，一直不该开
+        if opened:
+            break
+        threading.Event().wait(0.01)
+    assert opened == []
+
+    server.started = True
+    for _ in range(200):
+        if opened:
+            break
+        threading.Event().wait(0.01)
+    assert opened == ["http://127.0.0.1:8000/"]
+
+
+def test_the_browser_thread_gives_up_instead_of_hanging(monkeypatch):
+    from rmclient.cli import open_when_ready
+
+    opened: list[str] = []
+    monkeypatch.setattr("webbrowser.open", opened.append)
+
+    class NeverStarts:
+        started = False
+
+    open_when_ready(NeverStarts(), "http://127.0.0.1:8000/", timeout=0.05)
+    import threading
+    threading.Event().wait(0.3)
+    assert opened == []
+
+
+def test_serve_reads_the_configuration_before_opening_anything(monkeypatch, tmp_path, capsys):
+    """配置错了还弹浏览器指向空气，是最气人的失败方式。"""
+    from rmclient import config
+
+    for key in (config.ENV_URL, config.ENV_USER, config.ENV_PASSWORD,
+                config.ENV_PASSWORD_FILE):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+    monkeypatch.setattr(config, "FALLBACK_ENV_FILE", tmp_path / "nope/.env")
+    monkeypatch.setattr(config, "FALLBACK_PASSWORD_FILE", tmp_path / "nope/password")
+    opened: list[str] = []
+    monkeypatch.setattr("webbrowser.open", opened.append)
+
+    assert main(["serve", "--open"]) == 2
+    assert "bad configuration" in capsys.readouterr().err
+    assert opened == []
