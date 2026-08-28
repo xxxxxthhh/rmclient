@@ -6,7 +6,7 @@
 | | |
 |---|---|
 | 日期 | 2026-08-28 |
-| 入口 | `https://rmfakecloud.example.com`（Cloudflare 隧道；direct 域名对 `/ui*` 固定 403，未使用） |
+| 入口 | Cloudflare 隧道域名（本机配置 `DOMAIN` 键读取，已从仓库脱敏；direct 域名对 `/ui*` 固定 403，未使用） |
 | 服务端 | rmfakecloud v0.0.31（paperpal 项目部署在 volc1） |
 | 客户端 | 本机 macOS / Python 3.14 / httpx 0.28.1，脚本 `spike/epub_spike.py` |
 | 凭据 | 用户名读 `~/Documents/paperpal/.env`，密码读 `~/Documents/paperpal/secrets/rmfakecloud_password`（32 字节含换行，须 `.strip()`）；本报告与日志不含任何凭据 |

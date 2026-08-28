@@ -27,10 +27,20 @@ from pathlib import Path
 
 import httpx
 
-BASE = "https://rmfakecloud.example.com"
 ENV_FILE = Path.home() / "Documents/paperpal/.env"
 PW_FILE = Path.home() / "Documents/paperpal/secrets/rmfakecloud_password"
 OUT = Path(__file__).resolve().parent / "out"
+
+
+def _base() -> str:
+    """隧道域名读本地配置（DOMAIN 键），不写进仓库。"""
+    for line in ENV_FILE.read_text().splitlines():
+        if line.startswith("DOMAIN="):
+            return "https://" + line.split("=", 1)[1].strip().strip('"').strip("'")
+    raise RuntimeError(f"DOMAIN not found in {ENV_FILE}")
+
+
+BASE = _base()
 
 OK, BAD, SKIP = "✓", "✗", "–"
 

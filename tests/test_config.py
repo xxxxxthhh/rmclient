@@ -29,7 +29,7 @@ def clean_env(monkeypatch, tmp_path):
 def fallback(monkeypatch, tmp_path):
     """摆一套本机原有布局的假文件。"""
     env = tmp_path / ".env"
-    env.write_text("OTHER=1\nRMFAKECLOUD_USER=fallback@example.test\n")
+    env.write_text("OTHER=1\nDOMAIN=fallback.example.test\nRMFAKECLOUD_USER=fallback@example.test\n")
     pw = tmp_path / "password"
     pw.write_text("fallback-secret\n")
     monkeypatch.setattr(config, "FALLBACK_ENV_FILE", env)
@@ -46,7 +46,7 @@ def test_url_comes_from_the_environment(monkeypatch):
 
 
 def test_url_falls_back_only_when_the_local_files_exist(fallback):
-    assert base_url() == config.FALLBACK_BASE_URL
+    assert base_url() == "https://fallback.example.test"
 
 
 def test_url_without_env_or_fallback_says_what_to_set():

@@ -28,7 +28,7 @@ ENV_LOCKED_FOLDERS = "RMCLIENT_LOCKED_FOLDERS"
 DEFAULT_LOCKED_FOLDERS = ("Mailbox",)
 
 # ---- 向后兼容的回落（本机原有用法，细节见 CLAUDE.md）----
-FALLBACK_BASE_URL = "https://rmfakecloud.example.com"
+# 服务器域名不写进仓库：从 paperpal/.env 的 DOMAIN 键运行时读取。
 _PAPERPAL = Path.home() / "Documents/paperpal"
 FALLBACK_ENV_FILE = _PAPERPAL / ".env"
 FALLBACK_PASSWORD_FILE = _PAPERPAL / "secrets/rmfakecloud_password"
@@ -60,12 +60,22 @@ def _fallback_available() -> bool:
     return FALLBACK_ENV_FILE.is_file() and FALLBACK_PASSWORD_FILE.is_file()
 
 
+def _fallback_base_url() -> str | None:
+    """本机布局 .env 里的 DOMAIN=<隧道主机名>。域名只活在本地配置，不进仓库。"""
+    for line in FALLBACK_ENV_FILE.read_text().splitlines():
+        if line.startswith("DOMAIN="):
+            host = line.split("=", 1)[1].strip().strip('"').strip("'")
+            if host:
+                return host.rstrip("/") if host.startswith("http") else f"https://{host}"
+    return None
+
+
 def base_url() -> str:
     """环境变量优先；没有就回落，回落不成立直接报错。"""
     if url := os.environ.get(ENV_URL, "").strip():
         return url.rstrip("/")
-    if _fallback_available():
-        return FALLBACK_BASE_URL
+    if _fallback_available() and (url := _fallback_base_url()):
+        return url
     raise ConfigError(f"{ENV_URL} is not set and no local fallback config exists — {_HOWTO}")
 
 

@@ -15,8 +15,9 @@ rmfakecloud v0.0.31，本项目**只做 API 消费者**。契约权威文档：`
    也必须把原名原样传回，漏传会把可见名置空。
 5. **上传扩展名的正确性完全由客户端负责**：服务端只认文件名后缀（.pdf/.epub/.rmdoc
    白名单），不校验内容。传错后缀不报错，会安静地把书弄坏在设备端。
-6. **入口只用 `https://rmfakecloud.example.com`**（Cloudflare 隧道）；direct 域名
-   对 `/ui*` 固定 403。注意 CF 免费边缘有 100MB 单请求上限（大文件导出可能撞）。
+6. **入口只用 Cloudflare 隧道域名**（读 `~/Documents/paperpal/.env` 的 `DOMAIN`，
+   域名不写进本仓库）；direct 域名对 `/ui*` 固定 403。注意 CF 免费边缘有 100MB
+   单请求上限（大文件导出可能撞）。
 7. **paperpal 仓库（`~/Documents/paperpal`）只读参考，一个字节都不许改。**
    不 ssh volc1，不 ssh 设备。
 8. 对生产云的实验只在 `rmclient-spike-<随机>` 临时根级目录里做，跑完清理。
