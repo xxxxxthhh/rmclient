@@ -62,18 +62,24 @@ def plan_delete(tree: Tree, node_id: str) -> list[dict]:
     if root is None:
         raise LookupError(f"{node_id} not in tree")
     ids = set(subtree_ids(tree.entries, node_id))
-    items = [
-        {
-            "id": node.id,
-            "name": node.name,
-            "kind": "folder" if isinstance(node, Folder) else "doc",
-            "type": getattr(node, "type", ""),
-            "size": getattr(node, "size", 0),
-            "depth": len(path),
-        }
-        for path, node in walk([root])
-        if node.id in ids
-    ]
+    items = []
+    root_depth = 0
+    for path, node in walk(tree.entries):  # 走整棵树是为了拿到绝对路径（记账要用）
+        if node.id not in ids:
+            continue
+        if node.id == node_id:
+            root_depth = len(path)
+        items.append(
+            {
+                "id": node.id,
+                "name": node.name,
+                "kind": "folder" if isinstance(node, Folder) else "doc",
+                "type": getattr(node, "type", ""),
+                "size": getattr(node, "size", 0),
+                "path": "/".join(path),
+                "depth": len(path) - root_depth,  # 相对深度，给对话框缩进用
+            }
+        )
     return sorted(items, key=lambda i: i["depth"], reverse=True)
 
 
@@ -122,7 +128,12 @@ def delete_subtree(client: RmClient, node_id: str, expected_ids: list[str]) -> d
         raise TreeChanged(added, removed)
     deleted = client.delete_many(ids, allowed_ids=set(ids), entries=tree.entries)
     after = client.list_tree().entries
-    return {"deleted": deleted, "residue": [i for i in ids if find(after, i)]}
+    return {
+        "deleted": deleted,
+        "residue": [i for i in ids if find(after, i)],
+        # 删之前的清单：名字和原路径只有这会儿还查得到，调用方拿去记账。
+        "items": plan,
+    }
 
 
 def check_resurrection(client: RmClient, ids: list[str]) -> list[dict]:

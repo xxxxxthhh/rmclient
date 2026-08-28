@@ -17,6 +17,11 @@
  .msg{padding:.7rem 1rem;border-radius:8px;margin:.6rem 0;white-space:pre-wrap}
  .err{background:#fdecea}
  #trash{color:#777}
+ #pending{background:#fff8e1;border-radius:8px;padding:.8rem 1rem;margin:.6rem 0}
+ #pending h2{font-size:1rem;margin:0 0 .4rem}
+ #pending .rec{font-size:.9em;color:#555;padding:.05rem 0}
+ #pending button{font:inherit;font-size:.85em;padding:.15rem .6rem;margin-right:.4rem;
+                 cursor:pointer;border:1px solid #ccc;border-radius:5px;background:#fff}
  .ok{background:#e8f5e9}
  .acts{margin-left:.5rem;visibility:hidden}
  .node:hover>.acts,.node:hover>summary>.acts{visibility:visible}
@@ -37,6 +42,7 @@
 <h1>文档树</h1>
 <div id="toolbar"><button id="mkroot">＋ 新建根级目录</button>
   <button id="reload">刷新</button></div>
+<div id="pending" hidden></div>
 <div id="log"></div>
 <div id="tree">读取中…</div>
 <details id="trash-wrap" hidden>
@@ -122,7 +128,8 @@ async function call(url, fields, okText) {
   const r = await fetch(url, {method: 'POST', body});
   const d = await r.json().catch(() => ({}));
   if (r.ok) { say('ok', okText(d)); await document.getElementById('mkroot').onclick = () => askNewFolder('', '根级');
-document.getElementById('reload').onclick = () => load();
+document.getElementById('reload').onclick = () => { loadPending(); load(); };
+loadPending();
 load(); return d; }
   say('err', (d.detail && d.detail.message) || `失败：HTTP ${r.status}`);
   return null;
@@ -214,31 +221,67 @@ async function askDelete(node) {
       return;
     }
     reportDeleted(node.name, d);
+    await loadPending();
     await load();
   });
 }
 
 function reportDeleted(name, result) {
-  const box = el('div', 'msg ' + (result.residue.length ? 'err' : 'ok'));
-  box.textContent = result.residue.length
+  say(result.residue.length ? 'err' : 'ok', result.residue.length
     ? `已删 ${result.deleted.length} 项，但复查发现 ${result.residue.length} 项还在树上：${result.residue.join(', ')}`
     : `✓ 已删除「${name}」共 ${result.deleted.length} 项，删完立刻复查未见残留。\n` +
-      '注意：复活要等设备同步一轮才看得出来，过几分钟点下面这个按钮再查一次。';
-  const btn = el('button', null, '复活复查');
-  btn.onclick = async () => {
-    const form = new FormData();
-    for (const i of result.deleted) form.append('ids', i);
-    const r = await fetch('/api/resurrection', {method: 'POST', body: form});
-    const d = await r.json().catch(() => ({back: []}));
-    say(d.back.length ? 'err' : 'ok', d.back.length
-      ? `⚠ ${d.back.length} 项被设备端原 UUID 推回来了：\n` +
-        d.back.map(b => `  ${b.id}  ${b.path ? b.path + '/' : ''}${b.name}`).join('\n') +
-        '\n再删一次，并且删完别在设备上碰它。'
-      : '✓ 复查：这些 UUID 没有回到树上。');
-    await load();
-  };
-  box.append(document.createElement('br'), btn);
-  document.getElementById('log').append(box);
+      '复活要等设备同步一轮才看得出来——记录已存到本地，过几分钟用上面的「复活复查」再查一次。');
+}
+
+// ---- 待复查的删除记录（存在本地文件里，刷新页面也还在）----
+
+async function loadPending() {
+  const box = document.getElementById('pending');
+  const r = await fetch('/api/deleted');
+  if (!r.ok) { box.hidden = true; return; }
+  const records = (await r.json()).records || [];
+  box.hidden = !records.length;
+  if (!records.length) return;
+
+  box.textContent = '';
+  box.append(el('h2', null, `删除记录待复查（${records.length} 项）`));
+  box.append(el('div', 'meta',
+    '删除是硬删，但设备端对这些文档有本地变更时会把它们原 UUID 推回来（复活）。' +
+    '设备同步一轮之后点「复活复查」确认一下，确认干净了就清掉记录。'));
+  for (const rec of records) {
+    const line = el('div', 'rec');
+    const where = rec.path ? rec.path + '/' : '';
+    line.append(el('span', null,
+      `${rec.kind === 'folder' ? '📁' : '·'} ${where}${rec.name}  ${rec.id}  ${(rec.deleted_at || '').replace('T', ' ').slice(0, 19)}`));
+    const drop = el('button', null, '清除');
+    drop.onclick = () => clearRecords([rec.id]);
+    line.append(document.createTextNode(' '), drop);
+    box.append(line);
+  }
+  const check = el('button', null, '复活复查');
+  check.onclick = recheck;
+  const clearAll = el('button', null, '全部清除');
+  clearAll.onclick = () => clearRecords(null);
+  box.append(el('div', null), check, clearAll);
+}
+
+async function recheck() {
+  const r = await fetch('/api/resurrection', {method: 'POST'});
+  const d = await r.json().catch(() => ({back: [], checked: 0}));
+  if (!r.ok) { say('err', '复查失败，看下终端里的报错'); return; }
+  say(d.back.length ? 'err' : 'ok', d.back.length
+    ? `⚠ ${d.back.length} 项被设备端原 UUID 推回来了：\n` +
+      d.back.map(b => `  ${b.id}  ${b.path ? b.path + '/' : ''}${b.name}`).join('\n') +
+      '\n再删一次，并且删完别在设备上碰它。'
+    : `✓ 复查了 ${d.checked} 条记录，没有 UUID 回到树上。确认干净了就点「全部清除」。`);
+  await load();
+}
+
+async function clearRecords(ids) {
+  const body = new FormData();
+  for (const i of ids || []) body.append('ids', i);
+  await fetch('/api/deleted/clear', {method: 'POST', body});
+  await loadPending();
 }
 
 let TREE = {entries: [], trash: []};
@@ -256,6 +299,7 @@ async function load() {
 }
 
 document.getElementById('mkroot').onclick = () => askNewFolder('', '根级');
-document.getElementById('reload').onclick = () => load();
+document.getElementById('reload').onclick = () => { loadPending(); load(); };
+loadPending();
 load();
 </script>

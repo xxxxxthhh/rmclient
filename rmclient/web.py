@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 
 from .api import RmApiError, RmClient
+from .journal import DeletionJournal
 from .manage import (
     TreeChanged,
     check_resurrection,
@@ -48,6 +49,11 @@ def get_client() -> RmClient:
         client.login()
         _client = client
     return _client
+
+
+def get_journal() -> DeletionJournal:
+    """删除记录文件。测试覆盖掉它，绝不写到仓库里的 var/。"""
+    return DeletionJournal()
 
 
 def folder_options(tree: Tree) -> list[dict]:
@@ -137,12 +143,20 @@ def api_delete_plan(id: str = Form(...), client: RmClient = Depends(get_client))
 
 @app.post("/api/delete")
 def api_delete(
-    id: str = Form(...), ids: list[str] = Form(...), client: RmClient = Depends(get_client)
+    id: str = Form(...),
+    ids: list[str] = Form(...),
+    client: RmClient = Depends(get_client),
+    journal: DeletionJournal = Depends(get_journal),
 ) -> dict:
     """硬删整棵子树。ids 是用户在对话框里确认过的那份清单，只用来比对；
-    真正的白名单是服务端此刻重算出来的（中间树变了就 409 让用户重看）。"""
+    真正的白名单是服务端此刻重算出来的（中间树变了就 409 让用户重看）。
+
+    删成功后把每一项落到记录文件——复活要等设备同步一轮，那会儿页面早刷新过了。"""
     try:
-        return _manage(lambda: delete_subtree(client, id, ids))
+        result = _manage(lambda: delete_subtree(client, id, ids))
+        deleted = set(result["deleted"])
+        journal.append(item for item in result["items"] if item["id"] in deleted)
+        return {"deleted": result["deleted"], "residue": result["residue"]}
     except TreeChanged as exc:
         raise HTTPException(
             409,
@@ -150,10 +164,27 @@ def api_delete(
         ) from exc
 
 
+@app.get("/api/deleted")
+def api_deleted(journal: DeletionJournal = Depends(get_journal)) -> dict:
+    """待复查的删除记录。页面一加载就读它，UUID 不再只活在浏览器内存里。"""
+    return {"records": journal.load()}
+
+
 @app.post("/api/resurrection")
-def api_resurrection(ids: list[str] = Form(...), client: RmClient = Depends(get_client)) -> dict:
-    """复活复查：删掉的 UUID 有没有被设备端原样推回来（REPORT §9.2）。"""
-    return {"back": check_resurrection(client, ids)}
+def api_resurrection(
+    client: RmClient = Depends(get_client), journal: DeletionJournal = Depends(get_journal)
+) -> dict:
+    """复活复查：记录文件里的 UUID 有没有被设备端原样推回来（REPORT §9.2）。"""
+    records = journal.load()
+    return {"checked": len(records), "back": check_resurrection(client, [r["id"] for r in records])}
+
+
+@app.post("/api/deleted/clear")
+def api_deleted_clear(
+    ids: list[str] | None = Form(None), journal: DeletionJournal = Depends(get_journal)
+) -> dict:
+    """清记录：给了 ids 就清这几条，没给就整个清空。清的只是本地记录，不碰云。"""
+    return {"cleared": journal.remove(ids) if ids else journal.clear()}
 
 
 @app.get("/tree", response_class=HTMLResponse)

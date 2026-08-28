@@ -5,25 +5,34 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from rmclient.web import app, get_client
+from rmclient.journal import DeletionJournal
+from rmclient.web import app, get_client, get_journal
 from tests.fixtures import logged_in, stateful_handler, tiny_epub, tiny_pdf
 
 
 @pytest.fixture
-def live_web():
+def live_web(journal):
     """假云会记事的版本：用来测改完之后树真的变了。"""
     client, seen = logged_in(stateful_handler())
     app.dependency_overrides[get_client] = lambda: client
+    app.dependency_overrides[get_journal] = lambda: journal
     with TestClient(app) as test_client:
         yield test_client, seen, client
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def web():
+def journal(tmp_path):
+    """删除记录写到 tmp_path，绝不碰仓库里的 var/。"""
+    return DeletionJournal(tmp_path / "deleted.json")
+
+
+@pytest.fixture
+def web(journal):
     """(TestClient, 假云捕获到的请求)。依赖覆盖掉 get_client，不读凭据不打云。"""
     client, seen = logged_in()
     app.dependency_overrides[get_client] = lambda: client
+    app.dependency_overrides[get_journal] = lambda: journal
     with TestClient(app) as test_client:
         yield test_client, seen
     app.dependency_overrides.clear()
@@ -291,15 +300,75 @@ def test_delete_refuses_the_mailbox_subtree(web):
     assert "DELETE" not in [x.method for x in seen]
 
 
-def test_resurrection_reports_ids_that_came_back(web):
-    r = web[0].post("/api/resurrection", data={"ids": ["b1", "ghost"]})
-    assert r.status_code == 200
-    back = r.json()["back"]
-    assert [b["id"] for b in back] == ["b1"] and back[0]["path"] == "Books"
+# ---- 删除记录与复活复查 --------------------------------------------
 
 
-def test_resurrection_is_quiet_when_nothing_came_back(live_web):
+def test_delete_writes_a_record_per_item(live_web, journal):
     client, _, _ = live_web
     plan = client.post("/api/delete/plan", data={"id": "books"}).json()
     client.post("/api/delete", data={"id": "books", "ids": plan["ids"]})
-    assert client.post("/api/resurrection", data={"ids": plan["ids"]}).json()["back"] == []
+    records = journal.load()
+    assert {(r["id"], r["name"], r["path"]) for r in records} == {
+        ("books", "Books", ""),
+        ("b1", "Book One", "Books"),
+        ("cs", "CS", "Books"),
+    }
+    assert all(r["deleted_at"] for r in records)
+
+
+def test_delete_records_nothing_when_it_was_refused(web, journal):
+    client, _ = web
+    client.post("/api/delete", data={"id": "mb", "ids": ["mb", "mb-doc"]})
+    client.post("/api/delete", data={"id": "books", "ids": ["books"]})  # 清单对不上 → 409
+    assert journal.load() == []
+
+
+def test_api_deleted_serves_the_file(web, journal):
+    journal.append([{"id": "x", "name": "Gone", "path": "Books", "kind": "doc"}])
+    assert [r["id"] for r in web[0].get("/api/deleted").json()["records"]] == ["x"]
+
+
+def test_resurrection_checks_the_ids_in_the_file(web, journal):
+    # 页面不再传 UUID 进来——复查的对象就是文件里那份。
+    journal.append([
+        {"id": "b1", "name": "Book One", "path": "Books", "kind": "doc"},
+        {"id": "ghost", "name": "Gone", "path": "", "kind": "doc"},
+    ])
+    body = web[0].post("/api/resurrection").json()
+    assert body["checked"] == 2
+    assert [b["id"] for b in body["back"]] == ["b1"]  # 只有它回到了树上
+    assert body["back"][0]["path"] == "Books"
+
+
+def test_resurrection_is_quiet_when_nothing_came_back(live_web, journal):
+    client, _, _ = live_web
+    plan = client.post("/api/delete/plan", data={"id": "books"}).json()
+    client.post("/api/delete", data={"id": "books", "ids": plan["ids"]})
+    body = client.post("/api/resurrection").json()
+    assert (body["checked"], body["back"]) == (3, [])
+
+
+def test_clear_removes_one_record(web, journal):
+    journal.append([{"id": "a", "name": "A"}, {"id": "b", "name": "B"}])
+    assert web[0].post("/api/deleted/clear", data={"ids": ["a"]}).json()["cleared"] == 1
+    assert [r["id"] for r in journal.load()] == ["b"]
+
+
+def test_clear_without_ids_empties_the_file(web, journal):
+    journal.append([{"id": "a", "name": "A"}, {"id": "b", "name": "B"}])
+    assert web[0].post("/api/deleted/clear").json()["cleared"] == 2
+    assert journal.load() == []
+
+
+def test_clearing_records_never_touches_the_cloud(web, journal):
+    client, seen = web
+    journal.append([{"id": "b1", "name": "Book One"}])
+    client.post("/api/deleted/clear")
+    assert seen == []
+
+
+def test_tree_page_carries_the_pending_block_and_no_longer_posts_ids(web):
+    html = web[0].get("/tree").text
+    assert 'id="pending"' in html and "loadPending()" in html
+    # 复查的 UUID 来自文件，页面不再自己攒一份
+    assert "/api/resurrection', {method: 'POST'}" in html
