@@ -23,6 +23,7 @@ from .manage import (
     create_folder,
     delete_subtrees,
     move,
+    move_many,
     plan_delete_many,
     rename,
 )
@@ -134,6 +135,14 @@ def api_move(
 ) -> dict:
     _manage(lambda: move(client, id, parent))
     return {"id": id, "parent": parent}
+
+
+@app.post("/api/move/batch")
+def api_move_batch(
+    ids: list[str] = Form(...), parent: str = Form(""), client: RmClient = Depends(get_client)
+) -> dict:
+    """批量移动到同一目标。目标非法整批不做；单项失败只影响它自己，结果逐项回。"""
+    return {"results": _manage(lambda: move_many(client, ids, parent))}
 
 
 @app.post("/api/delete/plan")

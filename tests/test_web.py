@@ -475,3 +475,36 @@ def test_tree_page_has_search_sort_and_upload_here(web):
     assert "传到这里" in html and "/api/upload" in html
     assert "node.children.length" in html  # 目录行的直接子项数
     assert "/api/download/" in html
+
+
+# ---- 批量操作 ------------------------------------------------------
+
+
+def test_batch_move_reports_each_item(live_web):
+    client, _, api = live_web
+    r = client.post("/api/move/batch", data={"ids": ["b1", "cs"], "parent": ""})
+    assert r.status_code == 200
+    assert [x["ok"] for x in r.json()["results"]] == [True, True]
+    assert [n.id for n in api.list_tree().entries] == ["mb", "books", "loose", "b1", "cs"]
+
+
+def test_batch_move_into_the_mailbox_is_refused_with_zero_writes(web):
+    client, seen = web
+    r = client.post("/api/move/batch", data={"ids": ["b1", "loose"], "parent": "mb"})
+    assert r.status_code == 403 and r.json()["detail"]["reason"] == "mailbox"
+    assert "PUT" not in [x.method for x in seen]
+
+
+def test_batch_move_marks_a_bad_item_without_failing_the_batch(live_web):
+    client, _, _ = live_web
+    results = client.post(
+        "/api/move/batch", data={"ids": ["mb-doc", "b1"], "parent": ""}
+    ).json()["results"]
+    assert [x["ok"] for x in results] == [False, True]
+    assert "Mailbox" in results[0]["error"]
+
+
+def test_tree_page_has_the_batch_bar_and_no_checkbox_for_locked_rows(web):
+    html = web[0].get("/tree").text
+    assert 'id="batchbar"' in html and "批量移动" in html and "批量删除" in html
+    assert "if (node.locked || !allowed) return null;" in html  # 信箱/回收站没有勾选框

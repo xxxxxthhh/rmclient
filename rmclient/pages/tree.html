@@ -24,6 +24,11 @@
  .msg{padding:.7rem 1rem;border-radius:8px;margin:.6rem 0;white-space:pre-wrap}
  .err{background:#fdecea}.ok{background:#e8f5e9}.warn{background:#fff8e1}
  #trash{color:#777}
+ #batchbar{background:#eef4ff;border-radius:8px;padding:.5rem .9rem;margin:.4rem 0;
+           display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+ #batchbar button{font:inherit;font-size:.9em;padding:.2rem .7rem;cursor:pointer;
+                  border:1px solid #ccc;border-radius:5px;background:#fff}
+ .pick{margin-right:.35rem}
  .acts{margin-left:.5rem;visibility:hidden}
  .node:hover>.acts,.node:hover>summary>.acts{visibility:visible}
  .acts button{font:inherit;font-size:.8em;margin-left:.25rem;padding:0 .4rem;cursor:pointer;
@@ -54,6 +59,7 @@
   <button id="mkroot">＋ 新建根级目录</button>
   <button id="reload">刷新</button>
 </div>
+<div id="batchbar" hidden></div>
 <div id="pending" hidden></div>
 <div id="log"></div>
 <div id="tree">读取中…</div>
@@ -79,6 +85,7 @@ const say = (cls, text) => document.getElementById('log').prepend(el('div', 'msg
 let TREE = {entries: [], trash: []};
 let INDEX = new Map();       // id -> {node, ancestors: [id...]}
 const OPEN = new Set();      // 用户自己展开的目录（过滤时的自动展开不写进来）
+const SELECTED = new Set();  // 多选（信箱子树与回收站没有勾选框）
 let FILTER = '';
 let SORT = 'name';
 
@@ -139,9 +146,25 @@ function actions(node, allowed) {
   return box;
 }
 
+function checkbox(node, allowed) {
+  // 信箱子树和回收站不给勾选框——批量操作根本够不到它们。
+  if (node.locked || !allowed) return null;
+  const box = el('input', 'pick');
+  box.type = 'checkbox';
+  box.checked = SELECTED.has(node.id);
+  box.onclick = e => e.stopPropagation();   // 别把 <summary> 一起点开
+  box.onchange = () => {
+    box.checked ? SELECTED.add(node.id) : SELECTED.delete(node.id);
+    drawBatchBar();
+  };
+  return box;
+}
+
 function renderDoc(node, allowed) {
   const row = el('div', 'node' + (node.locked ? ' locked' : ''));
   row.dataset.id = node.id;
+  const pick = checkbox(node, allowed);
+  if (pick) row.append(pick);
   const label = el('span', matches(node) && FILTER ? 'hit' : null, '· ' + node.name);
   row.append(label);
   row.append(el('span', 'meta',
@@ -157,6 +180,8 @@ function renderFolder(node, allowed) {
   box.open = FILTER ? subtreeMatches(node) : OPEN.has(node.id);
   box.ontoggle = () => { if (!FILTER) box.open ? OPEN.add(node.id) : OPEN.delete(node.id); };
   const head = el('summary');
+  const pick = checkbox(node, allowed);
+  if (pick) head.append(pick);
   head.append(el('span', matches(node) && FILTER ? 'hit' : null, '📁 ' + node.name));
   head.append(el('span', 'meta', `(${node.children.length})`));
   if (node.locked) head.append(el('span', 'badge', '🔒 只读'));
@@ -177,6 +202,50 @@ function renderInto(container, nodes, allowed = true) {
   if (!shown.length) container.append(el('div', 'meta', FILTER ? '（无匹配）' : '（空）'));
 }
 
+function drawBatchBar() {
+  const bar = document.getElementById('batchbar');
+  bar.hidden = !SELECTED.size;
+  if (!SELECTED.size) return;
+  bar.textContent = '';
+  bar.append(el('span', null, `已选 ${SELECTED.size} 项`));
+  const add = (label, fn) => { const b = el('button', null, label); b.onclick = fn; bar.append(b); };
+  add('批量移动', askMoveMany);
+  add('批量删除', () => askDelete([...SELECTED], `选中的 ${SELECTED.size} 项`));
+  add('清空选择', () => { SELECTED.clear(); drawBatchBar(); draw(); });
+}
+
+function askMoveMany() {
+  const exclude = new Set();
+  for (const id of SELECTED) {
+    const hit = INDEX.get(id);
+    if (hit) collectIds(hit.node, exclude);   // 自己和自己的子孙都不能当目标
+  }
+  const picked = [...SELECTED];
+  dialog(`移动选中的 ${picked.length} 项`, dlg => {
+    const sel = el('select');
+    for (const o of folderOptions(exclude)) {
+      const opt = el('option', null, o.path); opt.value = o.id; sel.append(opt);
+    }
+    dlg.append(el('div', 'meta', '每一项的原名都会原样保留'), sel);
+  }, '移动', async dlg => {
+    const parent = dlg.querySelector('select').value;
+    const body = new FormData();
+    for (const id of picked) body.append('ids', id);
+    body.append('parent', parent);
+    const r = await fetch('/api/move/batch', {method: 'POST', body});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { say('err', (d.detail && d.detail.message) || `失败：HTTP ${r.status}`); return; }
+    const ok = d.results.filter(x => x.ok);
+    const bad = d.results.filter(x => !x.ok);
+    say(bad.length ? 'warn' : 'ok',
+      `移动完成：成功 ${ok.length} 项，失败 ${bad.length} 项\n` +
+      d.results.map(x => `  ${x.ok ? '✓' : '✗'} ${x.name || x.id}${x.ok ? '' : '：' + x.error}`).join('\n'));
+    SELECTED.clear();
+    drawBatchBar();
+    await load();
+  });
+}
+
 function draw() {
   renderInto(document.getElementById('tree'), TREE.entries);
   const wrap = document.getElementById('trash-wrap');
@@ -190,6 +259,8 @@ async function load() {
   if (!r.ok) { say('err', '读不到文档树，看下终端里的报错'); return; }
   TREE = await r.json();
   reindex();
+  for (const id of [...SELECTED]) if (!INDEX.has(id)) SELECTED.delete(id);  // 删掉/移走的别留在选中里
+  drawBatchBar();
   draw();
 }
 
@@ -355,6 +426,8 @@ async function askDelete(roots, label) {
       await load();
       return;
     }
+    SELECTED.clear();
+    drawBatchBar();
     say(d.residue.length ? 'err' : 'ok', d.residue.length
       ? `已删 ${d.deleted.length} 项，但复查发现 ${d.residue.length} 项还在树上：${d.residue.join(', ')}`
       : `✓ 已删除 ${d.deleted.length} 项，删完立刻复查未见残留。\n` +

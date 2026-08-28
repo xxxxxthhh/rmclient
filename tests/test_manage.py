@@ -10,6 +10,7 @@ from rmclient.manage import (
     create_folder,
     delete_subtrees,
     move,
+    move_many,
     plan_delete,
     plan_delete_many,
     rename,
@@ -200,3 +201,41 @@ def test_delete_subtrees_accepts_a_parent_plus_child_selection():
     result = delete_subtrees(client, ["books", "b1"], [i["id"] for i in plan])
     assert result["residue"] == [] and result["deleted"][-1] == "books"
     assert [n.id for n in client.list_tree().entries] == ["mb", "loose"]
+
+
+# ---- 批量移动 ------------------------------------------------------
+
+
+def test_move_many_preserves_each_original_name():
+    import json
+
+    client, seen = logged_in(stateful_handler())
+    results = move_many(client, ["b1", "cs"], "")
+    assert [r["ok"] for r in results] == [True, True]
+    puts = [json.loads(r.content) for r in seen if r.method == "PUT"]
+    assert puts == [
+        {"documentId": "b1", "parentId": "", "name": "Book One"},
+        {"documentId": "cs", "parentId": "", "name": "CS"},
+    ]
+    assert [n.id for n in client.list_tree().entries] == ["mb", "books", "loose", "b1", "cs"]
+
+
+def test_move_many_reads_the_tree_once():
+    client, seen = logged_in(stateful_handler())
+    move_many(client, ["b1", "cs"], "")
+    assert len([r for r in seen if r.method == "GET"]) == 1
+
+
+def test_move_many_collects_failures_and_keeps_going():
+    client, _ = logged_in(stateful_handler())
+    results = move_many(client, ["mb-doc", "b1", "ghost"], "")
+    assert [r["ok"] for r in results] == [False, True, False]
+    assert "Mailbox" in results[0]["error"]
+    assert results[1]["name"] == "Book One"
+
+
+def test_move_many_refuses_a_mailbox_target_outright():
+    client, seen = logged_in()
+    with pytest.raises(PermissionError, match="Mailbox"):
+        move_many(client, ["b1"], "mb")
+    assert "PUT" not in [r.method for r in seen]

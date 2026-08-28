@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from .api import RmClient
+from .api import RmApiError, RmClient
 from .models import (
     Document,
     Folder,
@@ -132,6 +132,29 @@ def move(client: RmClient, node_id: str, parent_id: str) -> None:
     tree = client.list_tree()
     check_move(tree, node_id, parent_id)
     client.move(node_id, parent_id, name=None, entries=tree.entries)
+
+
+def move_many(client: RmClient, node_ids: Iterable[str], parent_id: str) -> list[dict]:
+    """批量移动到同一个目标：逐项汇总结果，一项失败不打断后面的。
+
+    只读一次树当快照——所有项去的是同一个父，形不成环；名字也不会因为别人搬家
+    而变。逐项仍走 api.move 的读树取名路径（entries 就是这份快照），原名原样回传。
+    """
+    tree = client.list_tree()
+    check_not_mailbox(tree, parent_id)  # 目标不合法就整批不做
+    results = []
+    for node_id in node_ids:
+        node = find(tree.entries, node_id)
+        result = {"id": node_id, "name": node.name if node else ""}
+        try:
+            check_move(tree, node_id, parent_id)
+            client.move(node_id, parent_id, name=None, entries=tree.entries)
+            result["ok"] = True
+        except (PermissionError, ValueError, LookupError, RmApiError) as exc:
+            result["ok"] = False
+            result["error"] = str(exc)
+        results.append(result)
+    return results
 
 
 def delete_subtrees(client: RmClient, node_ids: list[str], expected_ids: list[str]) -> dict:
