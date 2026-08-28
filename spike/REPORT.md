@@ -267,3 +267,36 @@ rmclient 库本身，顺带把 login / create_folder / upload / delete_many 的�
 即上传端点的 `"root"` 与移动/建目录端点的 `""` 是两套写法，别统一。
 
 清理：创建 2 个对象（1 目录 + 1 文档），全部删除，回查残留 **0**。
+
+## 12. 追记（2026-08-28，v1：树上的 `size` 口径与批注 epub 的包内结构）
+
+只读观察，来自 v1 收尾时对真实库的一次导出（`GET /ui/api/documents/{id}?type=rmdoc`，
+未做任何写操作）。样本是 `Articles/` 里那本 `Introducing smolagents: simple agents that
+write actions in code.`（树上 `type: epub`）。
+
+**结论一：树条目的 `size` 是该文档所有 blob 之和，不是原件大小。**
+
+| | 字节 |
+|---|---|
+| 树条目 `size` | 108,195 |
+| 包内 `<uuid>.epub`（**原件**） | 18,513 |
+| 包内 `<uuid>.pdf`（设备生成的渲染件） | 87,511 |
+| 包内 `<uuid>.content` | 2,129 |
+| 包内 `<uuid>.metadata` | 350 |
+| 包内 `<uuid>.pagedata` | 15 |
+| 包内成员合计 | 108,518 |
+
+原件只占树上 size 的 17%。合计与树上 `size` 差 323 B（包内是解压后大小，服务端
+`size` 的确切口径未深究，不影响结论：**别拿树上的 size 当原件体积估算**，尤其是
+在盘算 Cloudflare 100MB 上限时——那条限制卡的是整包导出，比原件大得多）。
+
+**结论二：设备上批注过的 epub，包里会多一份设备生成的 `.pdf` 渲染件。**
+
+reMarkable 的 epub 是回流排版（§3.3 的 `pageCount: 0`），要在上面批注就得先定版，
+所以设备把它渲染成固定版式的 PDF 再往上画。于是这个文档同时有 `.epub`（原件）和
+`.pdf`（带版式、批注笔迹落在其上的那份）。
+
+→ 客户端结论：**「取回原件」和「取回带批注的东西」是两件事。**
+`GET /api/download/{id}` 默认按 `.content` 的 `fileType` 给原件（干净但无批注），
+`?package=1` 给整包 `.rmdoc`（含渲染件与笔迹）。两个入口在 `/tree` 的文档行上都有。
+笔记本（notebook）没有这个分岔，本来就只能整包给。
