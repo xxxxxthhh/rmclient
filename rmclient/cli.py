@@ -4,6 +4,7 @@
     rmclient push book.epub --to Books/CS    # 按树上的可见名路径指定目录
     rmclient push book.epub --to Books --force   # 明知重名也要再传一份
     rmclient serve                           # 起本地 Web
+    rmclient demo                            # 离线试玩，不需要服务器和凭据
 
 --to 只解析已存在的目录，不自动创建；找不到就报错并列候选（推错地方比报错糟得多）。
 """
@@ -102,6 +103,13 @@ def cmd_serve(args) -> int:
     return 0
 
 
+def cmd_demo(args) -> int:
+    """离线 demo：内存假云 + 公版书数据集，不读凭据、不出网。"""
+    from .demo import run
+
+    return run(port=args.port)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="rmclient", description="Content manager for your self-hosted reMarkable cloud"
@@ -120,6 +128,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("demo", help="try the web UI offline, against an in-memory demo cloud")
+    p.add_argument("--port", type=int, default=8001,
+                   help="port to listen on (default 8001, so it will not fight `serve`)")
+    p.set_defaults(func=cmd_demo)
 
     args = parser.parse_args(argv)
     try:

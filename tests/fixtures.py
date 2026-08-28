@@ -1,42 +1,28 @@
-"""测试用的最小载荷 + 假云（httpx.MockTransport）。
+"""测试用的假云（httpx.MockTransport）+ 从包内借来的载荷与 .rm 合成器。
+
+最小 EPUB/PDF、.rm v6 块序列、.rmdoc 打包这些构造器现在长在 rmclient.demo 里
+（demo 随包发布，本来就需要它们）。测试从那儿 import，不另抄一份——两处实现
+迟早会漂。
 
 不 import spike/ 的东西：测试不该绑在实验代码上。
 """
-
-import io
-import json
-import zipfile
 
 import httpx
 
 from rmclient.api import RmClient
 from rmclient.config import Credentials
+from rmclient.demo import rm_line, rm_page, rmdoc, tiny_epub, tiny_pdf
+
+__all__ = ["rm_line", "rm_page", "rmdoc", "tiny_epub", "tiny_pdf"]
 
 # ---- 载荷 ----------------------------------------------------------
 
 
-def tiny_epub(title: str = "Tiny") -> bytes:
-    """OCF 合规的最小 EPUB：mimetype 必须是第一个条目且不压缩。"""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        info = zipfile.ZipInfo("mimetype")
-        info.compress_type = zipfile.ZIP_STORED
-        z.writestr(info, "application/epub+zip")
-        z.writestr(
-            "META-INF/container.xml",
-            '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
-            '<rootfiles><rootfile full-path="content.opf" '
-            'media-type="application/oebps-package+xml"/></rootfiles></container>',
-        )
-        z.writestr("content.opf", f"<package><dc:title>{title}</dc:title></package>")
-    return buf.getvalue()
-
-
-def tiny_pdf() -> bytes:
-    return b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
-
-
 def tiny_rmdoc() -> bytes:
+    """最小 .rmdoc：只有测试的扩展名/zip 校验路径用得到，不进包。"""
+    import io
+    import zipfile
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("doc.content", "{}")
@@ -181,88 +167,6 @@ def stateful_handler(payload: dict | None = None):
 
 
 # ---- 合成 .rm / .rmdoc ---------------------------------------------
-
-
-def rm_line(points, color=None, tool=None, width=16):
-    """一笔：points 是 [(x, y), ...]（v6 坐标，x 以页面中线为 0）。"""
-    from rmscene import scene_items as si
-
-    return si.Line(
-        color=color if color is not None else si.PenColor.BLACK,
-        tool=tool if tool is not None else si.Pen.FINELINER_1,
-        points=[si.Point(x=x, y=y, speed=0, direction=0, width=width, pressure=100)
-                for x, y in points],
-        thickness_scale=2.0,
-        starting_length=0.0,
-    )
-
-
-def rm_page(lines) -> bytes:
-    """一页 .rm v6 字节：照 rmscene 的 simple_text_document 拼最小块序列。"""
-    import io
-    from uuid import uuid4
-
-    from rmscene import (
-        AuthorIdsBlock,
-        CrdtId,
-        CrdtSequenceItem,
-        LwwValue,
-        MigrationInfoBlock,
-        PageInfoBlock,
-        SceneGroupItemBlock,
-        SceneLineItemBlock,
-        SceneTreeBlock,
-        TreeNodeBlock,
-        write_blocks,
-    )
-    from rmscene import scene_items as si
-
-    blocks = [
-        AuthorIdsBlock(author_uuids={1: uuid4()}),
-        MigrationInfoBlock(migration_id=CrdtId(1, 1), is_device=True),
-        PageInfoBlock(loads_count=1, merges_count=0, text_chars_count=0, text_lines_count=0),
-        SceneTreeBlock(tree_id=CrdtId(0, 11), node_id=CrdtId(0, 0), is_update=True,
-                       parent_id=CrdtId(0, 1)),
-        TreeNodeBlock(si.Group(node_id=CrdtId(0, 1))),
-        TreeNodeBlock(si.Group(node_id=CrdtId(0, 11),
-                               label=LwwValue(timestamp=CrdtId(0, 12), value="Layer 1"))),
-        SceneGroupItemBlock(parent_id=CrdtId(0, 1), item=CrdtSequenceItem(
-            item_id=CrdtId(0, 13), left_id=CrdtId(0, 0), right_id=CrdtId(0, 0),
-            deleted_length=0, value=CrdtId(0, 11))),
-    ]
-    for i, line in enumerate(lines):
-        blocks.append(SceneLineItemBlock(parent_id=CrdtId(0, 11), item=CrdtSequenceItem(
-            item_id=CrdtId(1, 20 + i), left_id=CrdtId(0, 0), right_id=CrdtId(0, 0),
-            deleted_length=0, value=line)))
-    buf = io.BytesIO()
-    write_blocks(buf, blocks)
-    return buf.getvalue()
-
-
-def rmdoc(pages: dict, file_type: str = "notebook", listed=None, doc_id: str = "doc-uuid",
-          payload: bytes | None = None) -> bytes:
-    """一本 .rmdoc：{page_id: .rm 字节}，listed 是 .content 里的页序（可含已删页）。
-
-    payload 给 epub/pdf 用：包里那份原件的成员名是 UUID + 后缀，不是可见名。
-    """
-    import io
-
-    entries = listed if listed is not None else [{"id": pid} for pid in pages]
-    content = {
-        "fileType": file_type,
-        "formatVersion": 2,
-        "cPages": {"pages": entries},
-        "pageCount": len(entries),
-    }
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as z:
-        z.writestr(f"{doc_id}.content", json.dumps(content))
-        z.writestr(f"{doc_id}.metadata", json.dumps({"visibleName": "Synthetic"}))
-        for page_id, data in pages.items():
-            z.writestr(f"{doc_id}/{page_id}.rm", data)
-        if payload is not None:
-            z.writestr(f"{doc_id}.{file_type}", payload)
-    return buf.getvalue()
 
 
 def preview_handler(pages: int = 2):

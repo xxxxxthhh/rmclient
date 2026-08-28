@@ -4,7 +4,6 @@ demo 是给公开 README 截图和陌生人试玩用的门面，坏了不会有�
 所以这里把「树合法」「笔迹渲染得出来」「路由 200」钉死。
 """
 
-import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -13,23 +12,12 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from rmclient import demo
 from rmclient.models import Document, parse_tree, walk
 from rmclient.render import original_bytes, page_to_svg, pages_to_pdf, parse_rmdoc
 from tests.fixtures import tiny_epub, tiny_pdf
 
 REPO = Path(__file__).resolve().parent.parent
-
-
-def _load_demo():
-    """scripts/ 不是包，按路径加载。"""
-    spec = importlib.util.spec_from_file_location("demo_serve", REPO / "scripts" / "demo_serve.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules.setdefault("demo_serve", module)
-    spec.loader.exec_module(module)
-    return module
-
-
-demo = _load_demo()
 
 
 @pytest.fixture
@@ -199,18 +187,35 @@ def test_creating_a_folder_works_and_shows_up_as_a_target(client):
 # ---- 入口 ----------------------------------------------------------
 
 
-def test_the_readme_command_actually_starts(tmp_path):
-    """按 README 写的那条命令跑真文件，而且从别的目录跑。
+def _run_entry(argv: list[str], cwd) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, *argv], cwd=cwd, capture_output=True,
+                          text=True, timeout=120)
 
-    上面的用例都是 importlib 直接加载模块，绕过了脚本自己的 import 路径——
-    脚本导入链断了它们照样绿。这里跑的是真入口：--help 之前整个模块已经导完了。
-    """
-    result = subprocess.run(
-        [sys.executable, str(REPO / "scripts" / "demo_serve.py"), "--help"],
-        cwd=tmp_path, capture_output=True, text=True, timeout=120,
-    )
+
+def test_the_demo_subcommand_is_wired_up(tmp_path):
+    """README 教的是 `rmclient demo`——从别的目录跑真入口，确认它到得了。"""
+    result = _run_entry(["-m", "rmclient.cli", "demo", "--help"], tmp_path)
     assert result.returncode == 0, result.stderr
     assert "--port" in result.stdout and "8001" in result.stdout
+
+
+def test_the_old_script_still_works_as_a_shim(tmp_path):
+    """旧文档、旧书签里可能还写着 scripts/demo_serve.py，别让它们死掉。"""
+    result = _run_entry([str(REPO / "scripts" / "demo_serve.py"), "--help"], tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "--port" in result.stdout
+
+
+def test_the_demo_needs_no_credentials_and_no_repo(tmp_path, monkeypatch):
+    """陌生人的处境：没有配置文件、没有环境变量、cwd 也不在仓库里。"""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+    for key in ("RMCLIENT_URL", "RMCLIENT_USER", "RMCLIENT_PASSWORD",
+                "RMCLIENT_PASSWORD_FILE"):
+        monkeypatch.delenv(key, raising=False)
+    cloud = demo.DemoCloud()
+    app = demo.build_app(cloud, tmp_path / "deleted.json")
+    with TestClient(app) as client:
+        assert client.get("/api/tree").status_code == 200
 
 
 # ---- 零网络 --------------------------------------------------------
