@@ -659,3 +659,23 @@ def test_push_page_keeps_the_duplicate_semantics(web):
 def test_push_page_uses_the_same_toast_style_as_the_tree(web):
     text = web[0].get("/").text
     assert 'id="toasts"' in text and "if (cls !== 'err') setTimeout" in text
+
+
+def test_preview_page_has_page_nav_and_keyboard_paging(preview_web):
+    text = preview_web[0].get("/preview/b1").text
+    assert 'id="pagenav"' in text and "上一页" in text and "下一页" in text
+    assert "ArrowLeft" in text and "ArrowRight" in text
+    assert "第 ${current} / ${TOTAL} 页" in text
+
+
+def test_preview_page_skeletons_each_page_and_keeps_the_canvas_white(preview_web):
+    text = preview_web[0].get("/preview/b1").text
+    assert "el('div', 'skeleton')" in text and "img.onload = () => skeleton.remove();" in text
+    # 暗色模式下画布仍是白纸：笔迹是黑墨
+    assert "background:#fff" in text
+
+
+def test_preview_export_button_lives_in_the_topbar(preview_web):
+    text = preview_web[0].get("/preview/b1").text
+    head = text[: text.index("</header>")]
+    assert 'id="pdf"' in head and "导出 PDF" in head

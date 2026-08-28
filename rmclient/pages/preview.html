@@ -2,9 +2,16 @@
 <meta charset="utf-8"><title>rmclient — 笔记预览</title>
 <link rel="stylesheet" href="/static/app.css">
 <style>
- .page{margin:var(--sp-5) 0}
- .page img{width:100%;border:1px solid var(--line);border-radius:var(--radius);background:#fff}
- .num{color:var(--ink-3);font-size:.85em}
+ .pagenav{position:sticky;top:var(--topbar-h);z-index:15;display:flex;align-items:center;
+          gap:var(--sp-3);padding:var(--sp-2) 0;margin-bottom:var(--sp-3);
+          background:color-mix(in srgb, var(--paper) 92%, transparent);backdrop-filter:blur(6px)}
+ .page{margin:var(--sp-5) 0;scroll-margin-top:calc(var(--topbar-h) + 3rem)}
+ .page .num{color:var(--ink-3);font-size:.85em;margin-bottom:var(--sp-1)}
+ /* 画布固定白底：笔记是黑墨画在白纸上的，暗色模式下也别反色 */
+ .page .canvas{position:relative;width:100%;aspect-ratio:1404 / 1872;border:1px solid var(--line);
+               border-radius:var(--radius);background:#fff;overflow:hidden}
+ .page img{display:block;width:100%;background:#fff}
+ .page .skeleton{position:absolute;inset:0;border-radius:0}
  .msg{padding:var(--sp-3) var(--sp-4);border-radius:var(--radius);margin:var(--sp-4) 0;white-space:pre-wrap}
  .err{background:var(--danger-soft)}
 </style>
@@ -22,49 +29,111 @@
   </nav>
   <span class="crumb" id="crumb"><span id="title">读取中…</span></span>
   <span class="spacer"></span>
-  <span class="meta mono" id="count"></span>
-  <a class="button" id="pdf" hidden>导出 PDF</a>
+  <span class="badge" id="kind" hidden></span>
+  <a class="button primary" id="pdf" hidden>
+    <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+         stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+      <path d="M10 3v9"/><path d="M6.5 8.5 10 12l3.5-3.5"/><path d="M4 13v2.5h12V13"/>
+    </svg>
+    导出 PDF
+  </a>
 </header>
 <main>
+<div class="pagenav" id="pagenav" hidden>
+  <button id="prev" type="button">← 上一页</button>
+  <span class="mono" id="count" aria-live="polite">第 1 / 1 页</span>
+  <button id="next" type="button">下一页 →</button>
+  <span class="meta">键盘 ← → 也能翻</span>
+</div>
 <div id="log"></div>
 <div id="pages"></div>
 </main>
 <script>
 const docId = location.pathname.split('/').pop();
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+
+let TOTAL = 0;
+let current = 1;
+
+function setCurrent(n) {
+  current = Math.min(Math.max(n, 1), TOTAL || 1);
+  document.getElementById('count').textContent = `第 ${current} / ${TOTAL} 页`;
+  document.getElementById('prev').disabled = current <= 1;
+  document.getElementById('next').disabled = current >= TOTAL;
+}
+
+function goTo(n) {
+  const target = document.getElementById(`page-${Math.min(Math.max(n, 1), TOTAL)}`);
+  if (!target) return;
+  target.scrollIntoView({behavior: 'smooth', block: 'start'});
+  setCurrent(n);
+}
 
 async function load() {
   const r = await fetch(`/api/preview/${docId}`);
   const d = await r.json().catch(() => ({}));
   if (!r.ok) {
     document.getElementById('title').textContent = '打不开';
-    const box = document.createElement('div');
-    box.className = 'msg err';
-    box.textContent = (d.detail && d.detail.message) || `失败：HTTP ${r.status}`;
+    const box = el('div', 'msg err', (d.detail && d.detail.message) || `失败：HTTP ${r.status}`);
     document.getElementById('log').append(box);
     return;
   }
   document.title = `${d.name} — rmclient`;
   document.getElementById('title').textContent = d.name;
-  document.getElementById('count').textContent = `${d.pages} 页 · ${d.fileType}`;
+  const kind = document.getElementById('kind');
+  kind.textContent = `${d.fileType} · ${d.pages} 页`;
+  kind.hidden = false;
   const pdf = document.getElementById('pdf');
   pdf.href = `/api/preview/${docId}/pdf`;
   pdf.hidden = false;
 
+  TOTAL = d.pages;
+  document.getElementById('pagenav').hidden = TOTAL < 1;
+  setCurrent(1);
+
   const box = document.getElementById('pages');
-  for (let n = 1; n <= d.pages; n++) {
-    const wrap = document.createElement('div');
-    wrap.className = 'page';
-    const num = document.createElement('div');
-    num.className = 'num';
-    num.textContent = `第 ${n} / ${d.pages} 页`;
-    const img = document.createElement('img');
+  box.textContent = '';
+  for (let n = 1; n <= TOTAL; n++) {
+    const wrap = el('div', 'page');
+    wrap.id = `page-${n}`;
+    wrap.append(el('div', 'num', `第 ${n} / ${TOTAL} 页`));
+    const canvas = el('div', 'canvas');
+    const skeleton = el('div', 'skeleton');   // 图还没到就先占位，别让页面塌下去
+    const img = el('img');
     img.loading = 'lazy';
     img.alt = `第 ${n} 页`;
     img.src = `/api/preview/${docId}/page/${n}`;
-    wrap.append(num, img);
+    img.onload = () => skeleton.remove();
+    img.onerror = () => { skeleton.remove(); canvas.append(el('div', 'empty', '这一页没渲染出来')); };
+    canvas.append(img, skeleton);
+    wrap.append(canvas);
     box.append(wrap);
   }
+  watchScroll();
 }
+
+// 滚到哪一页，计数就跟到哪一页。
+function watchScroll() {
+  const observer = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) setCurrent(Number(entry.target.id.split('-')[1]));
+    }
+  }, {rootMargin: '-45% 0px -45% 0px'});
+  for (const page of document.querySelectorAll('.page')) observer.observe(page);
+}
+
+document.getElementById('prev').onclick = () => goTo(current - 1);
+document.getElementById('next').onclick = () => goTo(current + 1);
+window.addEventListener('keydown', ev => {
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if (ev.key === 'ArrowLeft') { ev.preventDefault(); goTo(current - 1); }
+  if (ev.key === 'ArrowRight') { ev.preventDefault(); goTo(current + 1); }
+});
 
 load();
 </script>
