@@ -367,13 +367,14 @@ async function load() {
 
 // ---- 对话框 ----
 
-function dialog(title, buildBody, confirmLabel, onConfirm) {
+function dialog(title, buildBody, confirmLabel, onConfirm, variant) {
   const dlg = el('dialog');
   dlg.append(el('h2', null, title));
   buildBody(dlg);
   const buttons = el('div', 'buttons');
   const cancel = el('button', null, '取消');
-  const ok = el('button', 'primary', confirmLabel);
+  // variant='danger'：不可逆动作的确认按钮走实心红，不用强调绿。
+  const ok = el('button', 'primary' + (variant ? ' ' + variant : ''), confirmLabel);
   cancel.onclick = () => dlg.close();
   ok.onclick = async () => { ok.disabled = true; await onConfirm(dlg); dlg.remove(); };
   buttons.append(cancel, ok);
@@ -536,7 +537,7 @@ async function askDelete(roots, label) {
         '复活要等设备同步一轮才看得出来——记录已存到本地，过几分钟用上面的「复活复查」再查一次。');
     await loadPending();
     await load();
-  });
+  }, 'danger');
 }
 
 // ---- 重名检测（只报告，不给任何自动删除）----

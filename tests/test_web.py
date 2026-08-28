@@ -691,3 +691,16 @@ def test_row_actions_overlay_so_the_meta_column_stays_flush_right(web):
     html = web[0].get("/tree").text
     assert ".acts{position:absolute" in html
     assert ".row .caret-gap{" in html and ".row .pick-gap{" in html  # 图标列对齐
+
+
+def test_delete_confirm_button_is_danger_red_not_accent_green(web):
+    client, _ = web
+    css = client.get("/static/app.css").text
+    assert "button.primary.danger {" in css and "background: var(--danger);" in css
+    assert css.count("--danger-ink") == 3  # 亮/暗两套 token + 按钮引用
+    html = client.get("/tree").text
+    # 删除对话框传 danger，其它对话框保持强调色
+    assert "}, 'danger');" in html
+    for other in ("askNewFolder", "askRename", "askMove"):
+        block = html[html.index(f"function {other}(") :][:700]
+        assert "'danger'" not in block

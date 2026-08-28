@@ -20,6 +20,7 @@
   --accent-ink: #ffffff;
   --danger: #9e3423;         /* 删除、失败 */
   --danger-soft: #fbeeeb;
+  --danger-ink: #ffffff;     /* 实心危险按钮上的字 */
   --warn: #8a6320;
   --warn-soft: #fbf3e0;
   --ok: #3d6b46;
@@ -52,6 +53,7 @@
     --accent-ink: #14201c;
     --danger: #e08a7b;
     --danger-soft: #2e1f1c;
+    --danger-ink: #2a1512;
     --warn: #d8b169;
     --warn-soft: #2c2519;
     --ok: #8fc09a;
@@ -165,6 +167,15 @@ button.primary, .button.primary {
 button.primary:hover { filter: brightness(1.08); }
 button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line-2)); }
 button.danger:hover { background: var(--danger-soft); }
+
+/* 破坏性动作的确认按钮：实心红，和 .alarm 同一个 --danger。
+   绿色（--accent）留给新建/重命名/移动那类可逆操作——别给硬删配个「放行」色。 */
+button.primary.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--danger-ink);
+}
+button.primary.danger:hover { filter: brightness(1.08); background: var(--danger); }
 button.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
 button.ghost:hover { background: var(--surface-2); color: var(--ink); }
 
