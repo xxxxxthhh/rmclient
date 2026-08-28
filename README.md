@@ -25,7 +25,9 @@
   笔记可只读预览（锁只针对写操作）。
 - ✅ **v1 内容管理器**：`/tree` 单页管理——搜索过滤（命中自动展开祖先）、按名字/时间/大小
   排序、目录行显示子项数与「传到这里」、多选批量移动与批量删除（合并成一份计划）、
-  文档原件下载、全库重名检测（只报告，不自动删）。
+  文档原件下载（`?package=1` 给整包 .rmdoc，含设备端批注）、全库重名检测（只报告，不自动删）。
+- ✅ **UI 增强**：三页统一顶栏 + 纸感设计体系（CSS token，暗色模式跟随系统）；删除确认
+  红色警示分级、批量悬浮操作条、toast 反馈、预览页键盘 ←→ 翻页。
 
 ## 快速上手
 
@@ -45,6 +47,8 @@ uv run python spike/move_root_spike.py        # 移动到根级契约补测（�
 
 重名会被拒（退出码 3）并列出已有副本 —— 服务端不覆盖也不去重，确实要再传一份加 `--force`。
 
+已知限制：`serve` 进程内的登录态不自动续期，长跑到 JWT 过期会开始 401，重启进程即可。
+
 凭据暂读 paperpal（同一账户）：用户名 `~/Documents/paperpal/.env` 的
 `RMFAKECLOUD_USER`，密码 `~/Documents/paperpal/secrets/rmfakecloud_password`。
 入口 `https://rmfakecloud.example.com`（只能走隧道域名，direct 域名对 `/ui*` 403）。
@@ -56,7 +60,7 @@ README.md        # 本文件
 CLAUDE.md        # 项目纪律与上下文（agent 干活前必读）
 SPEC.md          # v0 spec 草案
 rmclient/        # 库 + 前端：config / models / api / validate / push / manage / render / cli / web
-                 #   pages/ 是两个页面的 HTML（无构建链）
+                 #   pages/ 是三个页面的 HTML + app.css（无构建链）
 tests/           # 离线单元测试
 spike/           # 可行性验证代码 + REPORT.md（契约权威）
 scripts/         # 小工具（dump_tree.py）
