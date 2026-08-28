@@ -9,9 +9,9 @@ import httpx
 import pytest
 
 from rmclient import config, wizard
-from rmclient.config import ConfigError, config_file, default_password_file, load_credentials
+from rmclient.config import config_file, default_password_file, load_credentials
 from rmclient.wizard import run, write_config
-from tests.fixtures import TOKEN, logged_in, make_client
+from tests.fixtures import TOKEN, make_client
 
 
 @pytest.fixture(autouse=True)
@@ -202,3 +202,11 @@ def test_the_token_is_never_echoed(answers, fake_cloud, capsys):
     captured = capsys.readouterr()
     assert TOKEN not in captured.out + captured.err
     assert "s3cret" not in captured.out + captured.err
+
+
+def test_a_password_that_looks_like_a_sentinel_is_stored_verbatim(answers, fake_cloud):
+    """密码正好是「keep」的人，之前会被静默地不写文件——哨兵不能占用户的输入空间。"""
+    write_config("https://old.example.test", "old@example.test", "old-secret")
+    answers(["", ""], secret="keep")
+    assert run() == 0
+    assert default_password_file().read_text().strip() == "keep"

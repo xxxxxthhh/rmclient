@@ -39,22 +39,34 @@ class Abort(RuntimeError):
     """没法交互（--non-interactive、或者 stdin 不是终端）。"""
 
 
-def _ask(label: str, current: str = "", *, secret: bool = False) -> str:
-    """问一个值。有现值时回车表示保留；没有现值就一直问到给出非空。"""
+def _ask(label: str, current: str = "") -> str:
+    """问一个可见的值。有现值时回车表示保留；没有现值就一直问到给出非空。"""
     while True:
-        if secret:
-            hint = " [keep current]" if current else ""
-            prompt = f"{label}{hint}: "
-        else:
-            prompt = f"{label} [{current}]: " if current else f"{label}: "
+        prompt = f"{label} [{current}]: " if current else f"{label}: "
         try:
-            answer = (getpass.getpass(prompt) if secret else input(prompt)).strip()
+            answer = input(prompt).strip()
         except EOFError as exc:
             raise Abort("no terminal to ask on") from exc
         if answer:
             return answer
         if current:
             return current
+        print("  (required)", file=sys.stderr)
+
+
+def _ask_secret(label: str, *, has_current: bool) -> str | None:
+    """问密码。回车 = 保留现有的那份，用 None 表示——别拿哨兵字符串占坑：
+    密码正好就是那个词的人会被静默地不写文件，然后收到一句莫名其妙的报错。"""
+    prompt = f"{label} [keep current]: " if has_current else f"{label}: "
+    while True:
+        try:
+            answer = getpass.getpass(prompt).strip()
+        except EOFError as exc:
+            raise Abort("no terminal to ask on") from exc
+        if answer:
+            return answer
+        if has_current:
+            return None
         print("  (required)", file=sys.stderr)
 
 
@@ -112,7 +124,7 @@ def run(non_interactive: bool = False) -> int:
         url = _ask("Server URL", str(existing.get("url", "")))
         user = _ask("Email", str(existing.get("user", "")))
         has_password = default_password_file().is_file() or bool(existing.get("password_file"))
-        password = _ask("Password", "keep" if has_password else "", secret=True)
+        password = _ask_secret("Password", has_current=has_password)
     except Abort:
         print(
             "cannot prompt: stdin is not a terminal. Set "
@@ -123,10 +135,9 @@ def run(non_interactive: bool = False) -> int:
 
     if not url.startswith(("http://", "https://")):
         url = "https://" + url          # 光贴主机名是最常见的输入，别为此报错
-    config_path, password_path = write_config(
-        url, user, None if password == "keep" else password)
+    config_path, password_path = write_config(url, user, password)
     print(f"\nwrote {config_path}")
-    if password != "keep":
+    if password is not None:
         print(f"wrote {password_path} (mode 600)")
 
     if shadowing := [key for key in _SHADOWING_ENV if os.environ.get(key)]:
