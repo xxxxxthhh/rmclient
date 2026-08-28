@@ -62,7 +62,7 @@ def get_journal() -> DeletionJournal:
 
 def folder_options(tree: Tree) -> list[dict]:
     """可选目标目录（信箱整棵子树不出现在选项里）。"""
-    options = [{"id": "", "path": "（根级）"}]
+    options = [{"id": "", "path": "(root)"}]
     options += sorted(
         (
             {"id": node.id, "path": "/".join(path + (node.name,))}
@@ -250,7 +250,8 @@ def _notebook_or_415(name: str, notebook: Notebook) -> Notebook:
             {
                 "reason": "unsupported",
                 "fileType": notebook.file_type,
-                "message": f"「{name}」是 {notebook.file_type or '未知类型'}，只有原生笔记（notebook）能预览",
+                "message": f"{name!r} is {notebook.file_type or 'of unknown type'};"
+                           " only native notebooks can be previewed",
             },
         )
     return notebook
@@ -269,7 +270,7 @@ def api_preview_page(doc_id: str, number: int, client: RmClient = Depends(get_cl
     name, notebook = _load(client, doc_id)
     _notebook_or_415(name, notebook)
     if not 1 <= number <= len(notebook.pages):
-        raise HTTPException(404, {"reason": "not_found", "message": f"没有第 {number} 页"})
+        raise HTTPException(404, {"reason": "not_found", "message": f"no page {number}"})
     return Response(page_to_svg(notebook.pages[number - 1]), media_type="image/svg+xml")
 
 
@@ -367,6 +368,13 @@ async def api_upload(
 def stylesheet() -> Response:
     """三页共用的设计体系。no-store：改完样式刷新就见，不用跟浏览器缓存较劲。"""
     return Response(page("app.css"), media_type="text/css",
+                    headers={"Cache-Control": "no-store"})
+
+
+@app.get("/static/i18n.js")
+def strings() -> Response:
+    """三页共用的字符串表 + t()。加一门语言只改这一个文件，同样 no-store。"""
+    return Response(page("i18n.js"), media_type="text/javascript",
                     headers={"Cache-Control": "no-store"})
 
 

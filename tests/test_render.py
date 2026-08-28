@@ -46,13 +46,13 @@ def test_non_notebook_reports_its_type_and_no_pages():
 
 def test_a_listed_page_without_its_rm_becomes_a_placeholder():
     nb = parse_rmdoc(rmdoc({}, listed=[{"id": "ghost"}]))
-    assert len(nb.pages) == 1 and "没有对应的 .rm" in nb.pages[0].note
+    assert len(nb.pages) == 1 and "no .rm for this page" in nb.pages[0].note
 
 
 def test_one_unreadable_page_does_not_sink_the_notebook():
     pages = {"bad": b"not a rm file at all", "good": rm_page([rm_line([(0, 0), (1, 1)])])}
     nb = parse_rmdoc(rmdoc(pages, listed=[{"id": "bad"}, {"id": "good"}]))
-    assert nb.pages[0].note.startswith("这一页解析失败")
+    assert nb.pages[0].note.startswith("this page failed to parse")
     assert len(nb.pages[1].strokes) == 1
 
 

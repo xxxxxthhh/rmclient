@@ -1,6 +1,8 @@
 <!doctype html>
-<meta charset="utf-8"><title>rmclient — 文档树</title>
+<html lang="en">
+<meta charset="utf-8"><title data-i18n="tree.title">rmclient — Document tree</title>
 <link rel="stylesheet" href="/static/app.css">
+<script src="/static/i18n.js"></script>
 <style>
  #toolbar{position:sticky;top:var(--topbar-h);z-index:15;display:flex;gap:var(--sp-2);
           align-items:center;flex-wrap:wrap;margin:0 0 var(--sp-4);padding:var(--sp-2) 0;
@@ -59,33 +61,36 @@
     </svg>
     rmclient
   </a>
-  <nav class="tabs" aria-label="页面导航">
-    <a class="tab" href="/">推书</a>
-    <a class="tab" href="/tree" aria-current="page">文档树</a>
+  <nav class="tabs" data-i18n-aria-label="nav.aria" aria-label="Page navigation">
+    <a class="tab" href="/" data-i18n="nav.push">Push</a>
+    <a class="tab" href="/tree" aria-current="page" data-i18n="nav.tree">Tree</a>
   </nav>
-  <span class="crumb" id="crumb">文档树</span>
+  <span class="crumb" id="crumb" data-i18n="tree.crumb">Document tree</span>
   <span class="spacer"></span>
+  <div class="langpick" id="langpick" role="group"></div>
 </header>
 <main>
 <div id="toolbar">
-  <input id="search" type="search" placeholder="搜索可见名（子串，不分大小写）">
-  <label class="meta">排序</label>
+  <input id="search" type="search" data-i18n-placeholder="tree.search"
+         placeholder="Search visible names (substring, case-insensitive)">
+  <label class="meta" for="sort" data-i18n="tree.sort">Sort</label>
   <select id="sort">
-    <option value="name">名字</option>
-    <option value="modified">修改时间</option>
-    <option value="size">大小</option>
+    <option value="name" data-i18n="tree.sort.name">Name</option>
+    <option value="modified" data-i18n="tree.sort.modified">Modified</option>
+    <option value="size" data-i18n="tree.sort.size">Size</option>
   </select>
-  <button id="mkroot">＋ 新建根级目录</button>
-  <button id="dupcheck">重名检测</button>
-  <button id="reload">刷新</button>
+  <button id="mkroot" data-i18n="tree.newRoot">＋ New root folder</button>
+  <button id="dupcheck" data-i18n="tree.dupCheck">Duplicate report</button>
+  <button id="reload" data-i18n="tree.reload">Refresh</button>
 </div>
-<div id="batchbar" class="batchdock" role="region" aria-label="批量操作" hidden></div>
+<div id="batchbar" class="batchdock" role="region"
+     data-i18n-aria-label="tree.batch.aria" aria-label="Batch actions" hidden></div>
 <div id="dups" class="panel" hidden></div>
 <div id="pending" class="panel attention" hidden></div>
 <div id="log"></div>
 <div id="tree" aria-busy="true"></div>
 <details id="trash-wrap" hidden>
-  <summary>回收站（<span id="trash-count">0</span> 项，只读）</summary>
+  <summary id="trash-summary"></summary>
   <div id="trash" class="kids"></div>
 </details>
 </main>
@@ -129,7 +134,7 @@ function say(cls, text) {
   const box = document.getElementById('toasts');
   const card = el('div', 'toast ' + cls, text);
   const close = el('button', 'close', '×');
-  close.setAttribute('aria-label', '关闭');
+  close.setAttribute('aria-label', t('toast.close'));
   close.onclick = () => card.remove();
   card.append(close);
   box.prepend(card);
@@ -189,20 +194,20 @@ function actions(node, allowed) {
   };
   // 只读操作：信箱里的文档也给（锁只针对写操作）；回收站不给。
   if (node.kind === 'doc' && allowed) {
-    add('预览', () => { location.href = '/preview/' + node.id; });
-    add('下载', () => { location.href = '/api/download/' + node.id; },
-        '取回原件（epub/pdf 给原文件本身，笔记给整包）。不含设备端批注。');
-    add('整包', () => { location.href = '/api/download/' + node.id + '?package=1'; },
-        '整包 .rmdoc：含设备端的批注与笔迹，以及设备为批注过的 epub 生成的 PDF 渲染件。');
+    add(t('act.preview'), () => { location.href = '/preview/' + node.id; });
+    add(t('act.download'), () => { location.href = '/api/download/' + node.id; },
+        t('act.download.title'));
+    add(t('act.package'), () => { location.href = '/api/download/' + node.id + '?package=1'; },
+        t('act.package.title'));
   }
   if (node.locked || !allowed) return box;
   if (node.kind === 'folder') {
-    add('＋目录', () => askNewFolder(node.id, node.name));
-    add('传到这里', () => pickAndUpload(node.id, node.name));
+    add(t('act.newFolder'), () => askNewFolder(node.id, node.name));
+    add(t('act.uploadHere'), () => pickAndUpload(node.id, node.name));
   }
-  add('重命名', () => askRename(node));
-  add('移动', () => askMove(node));
-  add('删除', () => askDelete([node.id], node.name));
+  add(t('act.rename'), () => askRename(node));
+  add(t('act.move'), () => askMove(node));
+  add(t('act.delete'), () => askDelete([node.id], t('delete.label', {name: node.name})));
   return box;
 }
 
@@ -243,7 +248,7 @@ function renderDoc(node, allowed) {
   row.append(tail(
     node.type ? el('span', 'badge', node.type) : null,
     el('span', 'meta mono', `${kb(node.size)} · ${(node.lastModified || '').slice(0, 10)}`),
-    node.locked ? el('span', 'badge lock', '只读') : null,
+    node.locked ? el('span', 'badge lock', t('badge.readonly')) : null,
     actions(node, allowed)));
   wrap.append(row);
   return wrap;
@@ -263,8 +268,8 @@ function renderFolder(node, allowed) {
   row.lastChild.append(icon('folder'));
   row.append(nameSpan(node));
   row.append(tail(
-    el('span', 'meta mono', `${node.children.length} 项`),
-    node.locked ? el('span', 'badge lock', '只读') : null,
+    el('span', 'meta mono', t('tree.items', {n: node.children.length})),
+    node.locked ? el('span', 'badge lock', t('badge.readonly')) : null,
     actions(node, allowed)));
   head.append(row);
   box.append(head);
@@ -282,8 +287,8 @@ function renderInto(container, nodes, allowed = true) {
   }
   if (!shown.length) {
     container.append(el('div', 'empty', FILTER
-      ? `没有名字含「${FILTER}」的条目。换个词，或清空搜索框看全部。`
-      : '这个目录是空的。用目录行上的「传到这里」推一本书进来。'));
+      ? t('tree.empty.filtered', {filter: FILTER})
+      : t('tree.empty')));
   }
 }
 
@@ -292,15 +297,15 @@ function drawBatchBar() {
   bar.hidden = !SELECTED.size;
   if (!SELECTED.size) return;
   bar.textContent = '';
-  bar.append(el('strong', null, `已选 ${SELECTED.size} 项`));
+  bar.append(el('strong', null, t('batch.selected', {n: SELECTED.size})));
   const add = (label, fn, cls) => {
     const b = el('button', cls, label);
     b.onclick = fn;
     bar.append(b);
   };
-  add('移动', askMoveMany);
-  add('删除', () => askDelete([...SELECTED], `选中的 ${SELECTED.size} 项`), 'danger');
-  add('取消', () => { SELECTED.clear(); drawBatchBar(); draw(); }, 'ghost');
+  add(t('act.move'), askMoveMany);
+  add(t('act.delete'), () => askDelete([...SELECTED], t('batch.label', {n: SELECTED.size})), 'danger');
+  add(t('dialog.cancel'), () => { SELECTED.clear(); drawBatchBar(); draw(); }, 'ghost');
 }
 
 function askMoveMany() {
@@ -310,25 +315,25 @@ function askMoveMany() {
     if (hit) collectIds(hit.node, exclude);   // 自己和自己的子孙都不能当目标
   }
   const picked = [...SELECTED];
-  dialog(`移动选中的 ${picked.length} 项`, dlg => {
+  dialog(t('move.many.title', {n: picked.length}), dlg => {
     const sel = el('select');
     for (const o of folderOptions(exclude)) {
       const opt = el('option', null, o.path); opt.value = o.id; sel.append(opt);
     }
-    dlg.append(el('div', 'meta', '每一项的原名都会原样保留'), sel);
-  }, '移动', async dlg => {
+    dlg.append(el('div', 'meta', t('move.many.note')), sel);
+  }, t('move.confirm'), async dlg => {
     const parent = dlg.querySelector('select').value;
     const body = new FormData();
     for (const id of picked) body.append('ids', id);
     body.append('parent', parent);
     const r = await fetch('/api/move/batch', {method: 'POST', body});
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) { say('err', (d.detail && d.detail.message) || `失败：HTTP ${r.status}`); return; }
+    if (!r.ok) { say('err', httpError(r.status, d.detail)); return; }
     const ok = d.results.filter(x => x.ok);
     const bad = d.results.filter(x => !x.ok);
     say(bad.length ? 'warn' : 'ok',
-      `移动完成：成功 ${ok.length} 项，失败 ${bad.length} 项\n` +
-      d.results.map(x => `  ${x.ok ? '✓' : '✗'} ${x.name || x.id}${x.ok ? '' : '：' + x.error}`).join('\n'));
+      t('move.many.done', {ok: ok.length, bad: bad.length}) + '\n' +
+      d.results.map(x => `  ${x.ok ? '✓' : '✗'} ${x.name || x.id}${x.ok ? '' : ': ' + x.error}`).join('\n'));
     SELECTED.clear();
     drawBatchBar();
     await load();
@@ -339,7 +344,8 @@ function draw() {
   renderInto(document.getElementById('tree'), TREE.entries);
   const wrap = document.getElementById('trash-wrap');
   wrap.hidden = !TREE.trash.length;
-  document.getElementById('trash-count').textContent = TREE.trash.length;
+  document.getElementById('trash-summary').textContent =
+    t('tree.trash', {n: TREE.trash.length});
   renderInto(document.getElementById('trash'), TREE.trash, false);  // 回收站只读
 }
 
@@ -356,7 +362,7 @@ function showSkeleton() {
 async function load() {
   if (!TREE.entries.length) showSkeleton();
   const r = await fetch('/api/tree');
-  if (!r.ok) { say('err', '读不到文档树，看下终端里的报错'); return; }
+  if (!r.ok) { say('err', t('tree.loadFailed')); return; }
   TREE = await r.json();
   reindex();
   document.getElementById('tree').removeAttribute('aria-busy');
@@ -372,7 +378,7 @@ function dialog(title, buildBody, confirmLabel, onConfirm, variant) {
   dlg.append(el('h2', null, title));
   buildBody(dlg);
   const buttons = el('div', 'buttons');
-  const cancel = el('button', null, '取消');
+  const cancel = el('button', null, t('dialog.cancel'));
   // variant='danger'：不可逆动作的确认按钮走实心红，不用强调绿。
   const ok = el('button', 'primary' + (variant ? ' ' + variant : ''), confirmLabel);
   cancel.onclick = () => dlg.close();
@@ -395,25 +401,26 @@ async function call(url, fields, okText) {
   const r = await fetch(url, {method: 'POST', body});
   const d = await r.json().catch(() => ({}));
   if (r.ok) { say('ok', okText(d)); await load(); return d; }
-  say('err', (d.detail && d.detail.message) || `失败：HTTP ${r.status}`);
+  say('err', httpError(r.status, d.detail));
   return null;
 }
 
 function askNewFolder(parentId, parentName) {
-  dialog(`在「${parentName}」里新建目录`, dlg => {
-    const input = el('input'); input.placeholder = '目录名'; dlg.append(input);
-  }, '新建', async dlg => {
+  const title = parentId ? t('newFolder.title', {parent: parentName}) : t('newFolder.titleRoot');
+  dialog(title, dlg => {
+    const input = el('input'); input.placeholder = t('newFolder.placeholder'); dlg.append(input);
+  }, t('newFolder.confirm'), async dlg => {
     const name = dlg.querySelector('input').value;
-    await call('/api/folders', {name, parent: parentId}, d => `✓ 已新建目录「${d.name}」`);
+    await call('/api/folders', {name, parent: parentId}, d => t('newFolder.done', {name: d.name}));
   });
 }
 
 function askRename(node) {
-  dialog(`重命名「${node.name}」`, dlg => {
+  dialog(t('rename.title', {name: node.name}), dlg => {
     const input = el('input'); input.value = node.name; dlg.append(input);
-  }, '重命名', async dlg => {
+  }, t('rename.confirm'), async dlg => {
     const name = dlg.querySelector('input').value;
-    await call('/api/rename', {id: node.id, name}, d => `✓ 已重命名为「${d.name}」`);
+    await call('/api/rename', {id: node.id, name}, d => t('rename.done', {name: d.name}));
   });
 }
 
@@ -425,7 +432,7 @@ function collectIds(node, into = new Set()) {
 
 function folderOptions(exclude) {
   // 排除信箱子树、以及自己和自己的子孙（移进去会把整棵子树甩飞）。
-  const out = [{id: '', path: '（根级）'}];
+  const out = [{id: '', path: t('folder.root')}];
   const walk = (nodes, prefix) => {
     for (const n of nodes) {
       if (n.kind !== 'folder' || n.locked) continue;
@@ -439,15 +446,15 @@ function folderOptions(exclude) {
 }
 
 function askMove(node) {
-  dialog(`移动「${node.name}」`, dlg => {
+  dialog(t('move.title', {name: node.name}), dlg => {
     const sel = el('select');
     for (const o of folderOptions(collectIds(node))) {
       const opt = el('option', null, o.path); opt.value = o.id; sel.append(opt);
     }
-    dlg.append(el('div', 'meta', '原名会原样保留'), sel);
-  }, '移动', async dlg => {
+    dlg.append(el('div', 'meta', t('move.note')), sel);
+  }, t('move.confirm'), async dlg => {
     const parent = dlg.querySelector('select').value;
-    await call('/api/move', {id: node.id, parent}, () => `✓ 已移动「${node.name}」`);
+    await call('/api/move', {id: node.id, parent}, () => t('move.done', {name: node.name}));
   });
 }
 
@@ -474,22 +481,25 @@ async function uploadOne(file, force) {
   const r = await fetch('/api/upload', {method: 'POST', body});
   const d = await r.json().catch(() => ({}));
   if (r.ok) {
-    say('ok', `✓ 已上传「${d.name}」→ ${uploadTarget.name}` +
-      (d.duplicates ? `\n⚠ 同名的还有 ${d.duplicates} 份，设备端会看到 ${d.duplicates + 1} 本同名书` : '') +
-      '\n设备端需要同步一次才会出现');
+    say('ok', t('upload.done', {name: d.name, target: uploadTarget.name}) +
+      (d.duplicates
+        ? '\n' + t('push.dupWarn', {copies: d.duplicates, total: d.duplicates + 1})
+        : '') +
+      '\n' + t('push.syncNote'));
     await load();
     return;
   }
   const detail = d.detail || {};
   if (detail.reason === 'duplicate') {
-    dialog(`「${uploadTarget.name}」里已经有同名的书`, dlg => {
-      dlg.append(el('div', 'msg warn',
-        '服务端不覆盖也不去重：再传会多出一份独立副本，设备端两本无法区分。'));
-      for (const e of detail.existing || []) dlg.append(el('div', 'meta', `已有：${e.id}`));
-    }, '仍然上传', async () => { await uploadOne(file, true); });
+    dialog(t('upload.dupTitle', {target: uploadTarget.name}), dlg => {
+      dlg.append(el('div', 'msg warn', t('upload.dupBody')));
+      for (const e of detail.existing || []) {
+        dlg.append(el('div', 'meta', t('upload.dupExisting', {id: e.id})));
+      }
+    }, t('upload.dupConfirm'), async () => { await uploadOne(file, true); });
     return;
   }
-  say('err', detail.message || `上传失败：HTTP ${r.status}`);
+  say('err', httpError(r.status, detail));
 }
 
 // ---- 删除 ----
@@ -499,14 +509,12 @@ async function askDelete(roots, label) {
   for (const id of roots) body.append('roots', id);
   const r = await fetch('/api/delete/plan', {method: 'POST', body});
   const plan = await r.json().catch(() => ({}));
-  if (!r.ok) { say('err', (plan.detail && plan.detail.message) || `失败：HTTP ${r.status}`); return; }
+  if (!r.ok) { say('err', httpError(r.status, plan.detail)); return; }
 
-  dialog(`删除${label}`, dlg => {
-    dlg.append(el('div', 'alarm',
-      '硬删：不进回收站，不可撤销，并且会同步删掉设备上的文件。'));
-    dlg.append(el('div', 'meta',
-      '设备端如果对这些文档有本地变更，下次同步可能把它们原 UUID 推回来（复活）。'));
-    dlg.append(el('div', null, `将删除 ${plan.items.length} 项（先深后浅）：`));
+  dialog(t('delete.title', {label}), dlg => {
+    dlg.append(el('div', 'alarm', t('delete.alarm')));
+    dlg.append(el('div', 'meta', t('delete.resurrect')));
+    dlg.append(el('div', null, t('delete.count', {n: plan.items.length})));
     const list = el('div', 'scroller');
     for (const item of plan.items) {
       const line = item.kind === 'folder'
@@ -515,7 +523,7 @@ async function askDelete(roots, label) {
       list.append(el('div', 'node', '  '.repeat(item.depth) + line));
     }
     dlg.append(list);
-  }, '确认删除', async () => {
+  }, t('delete.confirm'), async () => {
     const form = new FormData();
     for (const id of roots) form.append('roots', id);
     for (const i of plan.ids) form.append('ids', i);
@@ -523,18 +531,17 @@ async function askDelete(roots, label) {
     const d = await res.json().catch(() => ({}));
     if (!res.ok) {
       const detail = d.detail || {};
-      say('err', detail.reason === 'tree_changed'
-        ? `${detail.message}\n（多半是设备同步动过这棵子树，重新点一次删除再看一遍清单）`
-        : (detail.message || `失败：HTTP ${res.status}`));
+      say('err', httpError(res.status, detail) +
+        (detail.reason === 'tree_changed' ? t('delete.treeChanged') : ''));
       await load();
       return;
     }
     SELECTED.clear();
     drawBatchBar();
     say(d.residue.length ? 'err' : 'ok', d.residue.length
-      ? `已删 ${d.deleted.length} 项，但复查发现 ${d.residue.length} 项还在树上：${d.residue.join(', ')}`
-      : `✓ 已删除 ${d.deleted.length} 项，删完立刻复查未见残留。\n` +
-        '复活要等设备同步一轮才看得出来——记录已存到本地，过几分钟用上面的「复活复查」再查一次。');
+      ? t('delete.residue',
+          {n: d.deleted.length, r: d.residue.length, ids: d.residue.join(', ')})
+      : t('delete.done', {n: d.deleted.length}));
     await loadPending();
     await load();
   }, 'danger');
@@ -546,15 +553,15 @@ async function showDuplicates() {
   const box = document.getElementById('dups');
   const r = await fetch('/api/duplicates');
   const d = await r.json().catch(() => ({groups: []}));
-  if (!r.ok) { say('err', '重名检测失败，看下终端里的报错'); return; }
+  if (!r.ok) { say('err', t('dups.failed')); return; }
   box.hidden = false;
   box.textContent = '';
   const groups = d.groups || [];
-  box.append(el('h2', null, `重名检测：${groups.length} 组同名文档`));
-  box.append(el('div', 'meta', '同名不等于重复——哪一份该留只有你知道，这里只报告，不提供自动删除。'));
+  box.append(el('h2', null, t('dups.title', {n: groups.length})));
+  box.append(el('div', 'meta', t('dups.note')));
   for (const g of groups) {
     const wrap = el('div', 'group');
-    wrap.append(el('div', null, `「${g.name}」×${g.items.length}`));
+    wrap.append(el('div', null, t('dups.group', {name: g.name, n: g.items.length})));
     for (const item of g.items) {
       const line = el('div', 'item');
       const link = el('a', null, (item.path ? item.path + '/' : '') + item.name);
@@ -562,13 +569,13 @@ async function showDuplicates() {
       line.append(link);
       line.append(el('span', 'meta',
         `[${item.type || '?'}, ${kb(item.size)}, ${(item.lastModified || '').slice(0, 10)}]`));
-      if (item.locked) line.append(el('span', 'badge', '🔒 只读'));
+      if (item.locked) line.append(el('span', 'badge', t('badge.readonlyLock')));
       wrap.append(line);
     }
     box.append(wrap);
   }
-  if (!groups.length) box.append(el('div', 'empty', '没有同名文档——这个库是干净的。'));
-  const close = el('button', null, '收起');
+  if (!groups.length) box.append(el('div', 'empty', t('dups.none')));
+  const close = el('button', null, t('dups.close'));
   close.onclick = () => { box.hidden = true; };
   box.append(el('div', null), close);
 }
@@ -598,23 +605,21 @@ async function loadPending() {
   if (!records.length) return;
 
   box.textContent = '';
-  box.append(el('h2', null, `删除记录待复查（${records.length} 项）`));
-  box.append(el('div', 'meta',
-    '删除是硬删，但设备端对这些文档有本地变更时会把它们原 UUID 推回来（复活）。' +
-    '设备同步一轮之后点「复活复查」确认一下，确认干净了就清掉记录。'));
+  box.append(el('h2', null, t('pending.title', {n: records.length})));
+  box.append(el('div', 'meta', t('pending.note')));
   for (const rec of records) {
     const line = el('div', 'rec');
     const where = rec.path ? rec.path + '/' : '';
     line.append(el('span', null,
       `${rec.kind === 'folder' ? '📁' : '·'} ${where}${rec.name}  ${rec.id}  ${(rec.deleted_at || '').replace('T', ' ').slice(0, 19)}`));
-    const drop = el('button', null, '清除');
+    const drop = el('button', null, t('pending.clear'));
     drop.onclick = () => clearRecords([rec.id]);
     line.append(document.createTextNode(' '), drop);
     box.append(line);
   }
-  const check = el('button', null, '复活复查');
+  const check = el('button', null, t('pending.recheck'));
   check.onclick = recheck;
-  const clearAll = el('button', null, '全部清除');
+  const clearAll = el('button', null, t('pending.clearAll'));
   clearAll.onclick = () => clearRecords(null);
   box.append(el('div', null), check, clearAll);
 }
@@ -622,12 +627,12 @@ async function loadPending() {
 async function recheck() {
   const r = await fetch('/api/resurrection', {method: 'POST'});
   const d = await r.json().catch(() => ({back: [], checked: 0}));
-  if (!r.ok) { say('err', '复查失败，看下终端里的报错'); return; }
+  if (!r.ok) { say('err', t('recheck.failed')); return; }
   say(d.back.length ? 'err' : 'ok', d.back.length
-    ? `⚠ ${d.back.length} 项被设备端原 UUID 推回来了：\n` +
+    ? t('recheck.back', {n: d.back.length}) + '\n' +
       d.back.map(b => `  ${b.id}  ${b.path ? b.path + '/' : ''}${b.name}`).join('\n') +
-      '\n再删一次，并且删完别在设备上碰它。'
-    : `✓ 复查了 ${d.checked} 条记录，没有 UUID 回到树上。确认干净了就点「全部清除」。`);
+      t('recheck.backTail')
+    : t('recheck.clean', {n: d.checked}));
   await load();
 }
 
@@ -645,7 +650,17 @@ document.getElementById('search').oninput = ev => {
   draw();
 };
 document.getElementById('sort').onchange = ev => { SORT = ev.target.value; draw(); };
-document.getElementById('mkroot').onclick = () => askNewFolder('', '根级');
+
+// 换语言：树和记录区重画；已弹出的 toast 和重名报告里的文案是旧语言的，直接收掉，
+// 比逐条重写省事，也不会留下半中半英的一屏。
+window.addEventListener('rmclient:lang', () => {
+  document.getElementById('toasts').textContent = '';
+  document.getElementById('dups').hidden = true;
+  draw();
+  drawBatchBar();
+  loadPending();
+});
+document.getElementById('mkroot').onclick = () => askNewFolder('', '');
 document.getElementById('dupcheck').onclick = showDuplicates;
 document.getElementById('reload').onclick = () => { loadPending(); load(); };
 loadPending();

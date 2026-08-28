@@ -108,7 +108,7 @@ def parse_rmdoc(data: bytes) -> Notebook:
         for page_id in _page_order(content, blobs):
             name = blobs.get(page_id)
             if name is None:
-                pages.append(Page(note=f"这一页在 rmdoc 里没有对应的 .rm（{page_id[:8]}）"))
+                pages.append(Page(note=f"no .rm for this page in the rmdoc ({page_id[:8]})"))
                 continue
             pages.append(_page_from_rm(z.read(name)))
     return Notebook(file_type=file_type, pages=pages)
@@ -131,7 +131,7 @@ def _page_from_rm(data: bytes) -> Page:
     try:
         tree = read_tree(BytesIO(data))
     except Exception as exc:
-        return Page(note=f"这一页解析失败：{type(exc).__name__}: {exc}")
+        return Page(note=f"this page failed to parse: {type(exc).__name__}: {exc}")
 
     strokes = [s for line in _lines(tree.root) if (s := _stroke(line))]
     bottom = max((y for s in strokes for _, y in s.points), default=0.0)

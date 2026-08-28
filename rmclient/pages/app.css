@@ -123,6 +123,30 @@ a { color: var(--accent); }
 .tab:hover { background: var(--surface-2); color: var(--ink); }
 .tab[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
+/* 语言切换：顶栏右侧一小段分段控件，按钮由 i18n.js 按字典生成。 */
+.langpick {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.langpick button {
+  border: 0;
+  border-radius: 0;
+  padding: .1rem .55rem;
+  font-size: .82em;
+  color: var(--ink-3);
+  background: transparent;
+}
+.langpick button + button { border-left: 1px solid var(--line); }
+.langpick button:hover { background: var(--surface-2); color: var(--ink); }
+.langpick button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .crumb {
   color: var(--ink-3);
   font-size: .9em;

@@ -1,6 +1,8 @@
 <!doctype html>
-<meta charset="utf-8"><title>rmclient — 笔记预览</title>
+<html lang="en">
+<meta charset="utf-8"><title data-i18n="preview.title">rmclient — Notebook preview</title>
 <link rel="stylesheet" href="/static/app.css">
+<script src="/static/i18n.js"></script>
 <style>
  .pagenav{position:sticky;top:var(--topbar-h);z-index:15;display:flex;align-items:center;
           gap:var(--sp-3);padding:var(--sp-2) 0;margin-bottom:var(--sp-3);
@@ -23,27 +25,28 @@
     </svg>
     rmclient
   </a>
-  <nav class="tabs" aria-label="页面导航">
-    <a class="tab" href="/">推书</a>
-    <a class="tab" href="/tree">文档树</a>
+  <nav class="tabs" data-i18n-aria-label="nav.aria" aria-label="Page navigation">
+    <a class="tab" href="/" data-i18n="nav.push">Push</a>
+    <a class="tab" href="/tree" data-i18n="nav.tree">Tree</a>
   </nav>
-  <span class="crumb" id="crumb"><span id="title">读取中…</span></span>
+  <span class="crumb" id="crumb"><span id="title" data-i18n="preview.loading">Loading…</span></span>
   <span class="spacer"></span>
+  <div class="langpick" id="langpick" role="group"></div>
   <span class="badge" id="kind" hidden></span>
   <a class="button primary" id="pdf" hidden>
     <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor"
          stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
       <path d="M10 3v9"/><path d="M6.5 8.5 10 12l3.5-3.5"/><path d="M4 13v2.5h12V13"/>
     </svg>
-    导出 PDF
+    <span data-i18n="preview.exportPdf">Export PDF</span>
   </a>
 </header>
 <main>
 <div class="pagenav" id="pagenav" hidden>
-  <button id="prev" type="button">← 上一页</button>
-  <span class="mono" id="count" aria-live="polite">第 1 / 1 页</span>
-  <button id="next" type="button">下一页 →</button>
-  <span class="meta">键盘 ← → 也能翻</span>
+  <button id="prev" type="button" data-i18n="preview.prev">← Previous</button>
+  <span class="mono" id="count" aria-live="polite">1 / 1</span>
+  <button id="next" type="button" data-i18n="preview.next">Next →</button>
+  <span class="meta" data-i18n="preview.keyHint">← → page too</span>
 </div>
 <div id="log"></div>
 <div id="pages"></div>
@@ -59,10 +62,12 @@ const el = (tag, cls, text) => {
 
 let TOTAL = 0;
 let current = 1;
+let META = null;      // 加载成功时的 {fileType, pages}，换语言时重刷徽章
+let FAILED = null;    // 打不开时的 (status, detail)，换语言时重刷那条错误
 
 function setCurrent(n) {
   current = Math.min(Math.max(n, 1), TOTAL || 1);
-  document.getElementById('count').textContent = `第 ${current} / ${TOTAL} 页`;
+  document.getElementById('count').textContent = t('preview.count', {n: current, total: TOTAL});
   document.getElementById('prev').disabled = current <= 1;
   document.getElementById('next').disabled = current >= TOTAL;
 }
@@ -78,15 +83,20 @@ async function load() {
   const r = await fetch(`/api/preview/${docId}`);
   const d = await r.json().catch(() => ({}));
   if (!r.ok) {
-    document.getElementById('title').textContent = '打不开';
-    const box = el('div', 'msg err', (d.detail && d.detail.message) || `失败：HTTP ${r.status}`);
-    document.getElementById('log').append(box);
+    FAILED = {status: r.status, detail: d.detail || {}};
+    showFailure();
     return;
   }
+  // 名字定下来之后，标题和面包屑就不再归字符串表管了——不摘掉 data-i18n，
+  // 换语言时 applyStatic 会把可见名刷回「读取中…」。
+  document.querySelector('title').removeAttribute('data-i18n');
   document.title = `${d.name} — rmclient`;
-  document.getElementById('title').textContent = d.name;
+  const crumb = document.getElementById('title');
+  crumb.removeAttribute('data-i18n');
+  crumb.textContent = d.name;
+  META = {fileType: d.fileType, pages: d.pages};
   const kind = document.getElementById('kind');
-  kind.textContent = `${d.fileType} · ${d.pages} 页`;
+  kind.textContent = t('preview.kind', {type: d.fileType, pages: d.pages});   // 类型是数据，不翻译
   kind.hidden = false;
   const pdf = document.getElementById('pdf');
   pdf.href = `/api/preview/${docId}/pdf`;
@@ -101,21 +111,46 @@ async function load() {
   for (let n = 1; n <= TOTAL; n++) {
     const wrap = el('div', 'page');
     wrap.id = `page-${n}`;
-    wrap.append(el('div', 'num', `第 ${n} / ${TOTAL} 页`));
+    wrap.append(el('div', 'num', t('preview.count', {n, total: TOTAL})));
     const canvas = el('div', 'canvas');
     const skeleton = el('div', 'skeleton');   // 图还没到就先占位，别让页面塌下去
     const img = el('img');
     img.loading = 'lazy';
-    img.alt = `第 ${n} 页`;
+    img.alt = t('preview.pageAlt', {n});
     img.src = `/api/preview/${docId}/page/${n}`;
     img.onload = () => skeleton.remove();
-    img.onerror = () => { skeleton.remove(); canvas.append(el('div', 'empty', '这一页没渲染出来')); };
+    img.onerror = () => { skeleton.remove(); canvas.append(el('div', 'empty', t('preview.pageFailed'))); };
     canvas.append(img, skeleton);
     wrap.append(canvas);
     box.append(wrap);
   }
   watchScroll();
 }
+
+function showFailure() {
+  document.getElementById('title').removeAttribute('data-i18n');
+  document.getElementById('title').textContent = t('preview.failed');
+  const log = document.getElementById('log');
+  log.textContent = '';
+  log.append(el('div', 'msg err', httpError(FAILED.status, FAILED.detail)));
+}
+
+// 换语言：页码、每页标签、alt、类型徽章、错误框全是已经画好的，逐个重写。
+window.addEventListener('rmclient:lang', () => {
+  if (FAILED) { showFailure(); return; }
+  setCurrent(current);
+  if (META) {
+    document.getElementById('kind').textContent =
+      t('preview.kind', {type: META.fileType, pages: META.pages});
+  }
+  document.querySelectorAll('.page').forEach((wrap, i) => {
+    const n = i + 1;
+    wrap.querySelector('.num').textContent = t('preview.count', {n, total: TOTAL});
+    wrap.querySelector('img').alt = t('preview.pageAlt', {n});
+    const empty = wrap.querySelector('.empty');
+    if (empty) empty.textContent = t('preview.pageFailed');
+  });
+});
 
 // 滚到哪一页，计数就跟到哪一页。
 function watchScroll() {

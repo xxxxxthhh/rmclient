@@ -41,13 +41,13 @@ def web(journal):
 
 def test_index_serves_the_drop_page(web):
     r = web[0].get("/")
-    assert r.status_code == 200 and "把 .epub" in r.text
+    assert r.status_code == 200 and 'data-i18n="push.drop.big"' in r.text
 
 
 def test_folder_options_exclude_the_mailbox(web):
     folders = web[0].get("/api/folders").json()["folders"]
     paths = [f["path"] for f in folders]
-    assert paths == ["（根级）", "Books", "Books/CS"]
+    assert paths == ["(root)", "Books", "Books/CS"]
     assert all(f["id"] != "mb" for f in folders)
 
 
@@ -131,7 +131,7 @@ def test_upload_refuses_an_unknown_parent(web):
 def test_tree_page_is_served_and_links_to_the_push_page(web):
     r = web[0].get("/tree")
     assert r.status_code == 200
-    assert 'href="/"' in r.text and "文档树" in r.text
+    assert 'href="/"' in r.text and 'data-i18n="tree.crumb"' in r.text
 
 
 def test_push_page_links_to_the_tree(web):
@@ -420,7 +420,7 @@ def test_preview_refuses_a_non_notebook_with_a_clear_reason(preview_web):
     assert r.status_code == 415
     detail = r.json()["detail"]
     assert detail["reason"] == "unsupported" and detail["fileType"] == "epub"
-    assert "只有原生笔记" in detail["message"]
+    assert "only native notebooks" in detail["message"]
 
 
 def test_preview_refuses_a_folder_and_an_unknown_id(preview_web):
@@ -449,7 +449,7 @@ def test_export_is_cached_across_page_requests(preview_web):
 
 def test_preview_page_is_served_and_the_tree_links_to_it(preview_web):
     client, _, _ = preview_web
-    assert "笔记预览" in client.get("/preview/b1").text
+    assert 'data-i18n="preview.title"' in client.get("/preview/b1").text
     assert "'/preview/' + node.id" in client.get("/tree").text
 
 
@@ -472,7 +472,7 @@ def test_batch_delete_of_parent_plus_child_does_not_409(live_web):
 def test_tree_page_has_search_sort_and_upload_here(web):
     html = web[0].get("/tree").text
     assert 'id="search"' in html and 'id="sort"' in html
-    assert "传到这里" in html and "/api/upload" in html
+    assert "t('act.uploadHere')" in html and "/api/upload" in html
     assert "node.children.length" in html  # 目录行的直接子项数
     assert "/api/download/" in html
 
@@ -589,7 +589,7 @@ def test_download_package_of_a_notebook_matches_the_default(preview_web):
 
 def test_tree_page_offers_the_package_download(web):
     html = web[0].get("/tree").text
-    assert "?package=1" in html and "含设备端的批注与笔迹" in html
+    assert "?package=1" in html and "t('act.package.title')" in html
 
 
 # ---- 呈现层 --------------------------------------------------------
@@ -613,8 +613,9 @@ def test_every_page_shares_the_topbar_and_stylesheet(preview_web):
 
 
 def test_the_current_page_is_marked_for_assistive_tech(web):
-    assert '<a class="tab" href="/" aria-current="page">' in web[0].get("/").text
-    assert '<a class="tab" href="/tree" aria-current="page">' in web[0].get("/tree").text
+    assert '<a class="tab" href="/" aria-current="page" data-i18n="nav.push">' in web[0].get("/").text
+    assert ('<a class="tab" href="/tree" aria-current="page" data-i18n="nav.tree">'
+            in web[0].get("/tree").text)
 
 
 def test_tree_rows_carry_icons_badges_and_right_aligned_meta(web):
@@ -628,12 +629,12 @@ def test_tree_has_sticky_toolbar_skeleton_and_empty_states(web):
     html = web[0].get("/tree").text
     assert "#toolbar{position:sticky" in html
     assert "showSkeleton()" in html and "skeleton skel-row" in html
-    assert "换个词，或清空搜索框看全部" in html
+    assert "t('tree.empty.filtered'" in html and "t('tree.empty')" in html
 
 
 def test_delete_dialog_separates_the_irreversible_warning(web):
     html = web[0].get("/tree").text
-    assert "'alarm'" in html and "硬删：不进回收站，不可撤销" in html
+    assert "'alarm'" in html and "t('delete.alarm')" in html
 
 
 def test_tree_feedback_goes_to_dismissible_toasts(web):
@@ -646,14 +647,14 @@ def test_push_page_has_a_dropzone_button_with_progress_cards(web):
     html = web[0].get("/")
     text = html.text
     assert 'type="button" id="drop" class="dropzone"' in text  # 可聚焦、可键盘触发
-    assert "newCard(file)" in text and "上传中" in text
+    assert "newCard(file)" in text and "t('push.state.uploading')" in text
     assert "el('div', 'bar')" in text and ".bar i{" in text   # 上传中的进度条
     assert ".dropzone.hot{" in text                            # 拖入高亮
 
 
 def test_push_page_keeps_the_duplicate_semantics(web):
     text = web[0].get("/").text
-    assert "勾上「重名也传」再拖一次" in text
+    assert "t('push.dupCard'" in text
     assert 'id="force"' in text and "force.checked ? 'true' : 'false'" in text
 
 
@@ -664,9 +665,10 @@ def test_push_page_uses_the_same_toast_style_as_the_tree(web):
 
 def test_preview_page_has_page_nav_and_keyboard_paging(preview_web):
     text = preview_web[0].get("/preview/b1").text
-    assert 'id="pagenav"' in text and "上一页" in text and "下一页" in text
+    assert 'id="pagenav"' in text
+    assert 'data-i18n="preview.prev"' in text and 'data-i18n="preview.next"' in text
     assert "ArrowLeft" in text and "ArrowRight" in text
-    assert "第 ${current} / ${TOTAL} 页" in text
+    assert "t('preview.count', {n: current, total: TOTAL})" in text
 
 
 def test_preview_page_skeletons_each_page_and_keeps_the_canvas_white(preview_web):
@@ -679,7 +681,7 @@ def test_preview_page_skeletons_each_page_and_keeps_the_canvas_white(preview_web
 def test_preview_export_button_lives_in_the_topbar(preview_web):
     text = preview_web[0].get("/preview/b1").text
     head = text[: text.index("</header>")]
-    assert 'id="pdf"' in head and "导出 PDF" in head
+    assert 'id="pdf"' in head and 'data-i18n="preview.exportPdf"' in head
 
 
 def test_hidden_beats_component_display(web):

@@ -1,6 +1,8 @@
 <!doctype html>
-<meta charset="utf-8"><title>rmclient — 推书</title>
+<html lang="en">
+<meta charset="utf-8"><title data-i18n="push.title">rmclient — Push</title>
 <link rel="stylesheet" href="/static/app.css">
+<script src="/static/i18n.js"></script>
 <style>
  .dropzone{width:100%;display:flex;flex-direction:column;align-items:center;gap:var(--sp-2);
            padding:var(--sp-6) var(--sp-4);border:2px dashed var(--line-2);border-radius:var(--radius-lg);
@@ -37,27 +39,31 @@
     </svg>
     rmclient
   </a>
-  <nav class="tabs" aria-label="页面导航">
-    <a class="tab" href="/" aria-current="page">推书</a>
-    <a class="tab" href="/tree">文档树</a>
+  <nav class="tabs" data-i18n-aria-label="nav.aria" aria-label="Page navigation">
+    <a class="tab" href="/" aria-current="page" data-i18n="nav.push">Push</a>
+    <a class="tab" href="/tree" data-i18n="nav.tree">Tree</a>
   </nav>
-  <span class="crumb" id="crumb">推书</span>
+  <span class="crumb" id="crumb" data-i18n="push.crumb">Push</span>
   <span class="spacer"></span>
+  <div class="langpick" id="langpick" role="group"></div>
 </header>
 <main class="narrow">
-<h1>推书到 reMarkable</h1>
+<h1 data-i18n="push.heading">Push a book to your reMarkable</h1>
 <div class="row">
-  <label for="parent">目标目录</label>
+  <label for="parent" data-i18n="push.target">Target folder</label>
   <select id="parent"></select>
-  <label class="check"><input type="checkbox" id="force"> 重名也传</label>
+  <label class="check"><input type="checkbox" id="force">
+    <span data-i18n="push.force">Upload even if the name exists</span></label>
 </div>
 <button type="button" id="drop" class="dropzone">
   <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor"
        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/>
   </svg>
-  <span class="big">把 .epub / .pdf / .rmdoc 拖到这里</span>
-  <span class="meta">或点击选择文件。后缀必须和内容一致——服务端不校验，本机会先拒掉。</span>
+  <span class="big" data-i18n="push.drop.big">Drop .epub / .pdf / .rmdoc here</span>
+  <span class="meta" data-i18n="push.drop.hint">Or click to choose files. The extension
+    has to match the content — the server does not check, so this machine rejects
+    mismatches first.</span>
 </button>
 <input type="file" id="picker" hidden multiple accept=".epub,.pdf,.rmdoc">
 <div id="queue"></div>
@@ -80,26 +86,30 @@ function say(cls, text) {
   const box = document.getElementById('toasts');
   const card = el('div', 'toast ' + cls, text);
   const close = el('button', 'close', '×');
-  close.setAttribute('aria-label', '关闭');
+  close.setAttribute('aria-label', t('toast.close'));
   close.onclick = () => card.remove();
   card.append(close);
   box.prepend(card);
   if (cls !== 'err') setTimeout(() => card.remove(), 7000);
 }
 
+// 根级那一项的名字是 UI 文案，不是数据：服务端给的 path 只用于识别（id 为空串）。
 fetch('/api/folders').then(r => r.json()).then(d => {
   for (const f of d.folders) {
     const o = document.createElement('option');
-    o.value = f.id; o.textContent = f.path; parent.append(o);
+    o.value = f.id;
+    o.textContent = f.id ? f.path : t('folder.root');
+    if (!f.id) o.dataset.i18n = 'folder.root';
+    parent.append(o);
   }
-}).catch(() => say('err', '读不到文档树，看下终端里的报错'));
+}).catch(() => say('err', t('push.foldersFailed')));
 
 // 逐文件一张卡片：上传中是进度条，完事变成结果。
 function newCard(file) {
   const card = el('div', 'card');
   const head = el('div', 'head');
   head.append(el('span', 'file', file.name));
-  const chip = el('span', 'chip badge', '上传中');
+  const chip = el('span', 'chip badge', t('push.state.uploading'));
   head.append(chip);
   card.append(head);
   const bar = el('div', 'bar');
@@ -129,20 +139,20 @@ async function upload(file) {
   const r = await fetch('/api/upload', {method: 'POST', body});
   const d = await r.json().catch(() => ({}));
   if (r.ok) {
-    card.done('ok', '已上传', `「${d.name}」→ ${target}\n` +
-      (d.duplicates ? `⚠ 同名的还有 ${d.duplicates} 份，设备端会看到 ${d.duplicates + 1} 本同名书\n` : '') +
-      '设备端需要同步一次才会出现');
+    card.done('ok', t('push.state.done'), t('push.uploaded', {name: d.name, target}) + '\n' +
+      (d.duplicates
+        ? t('push.dupWarn', {copies: d.duplicates, total: d.duplicates + 1}) + '\n'
+        : '') +
+      t('push.syncNote'));
     return;
   }
   const detail = d.detail || {};
   if (detail.reason === 'duplicate') {
     const copies = (detail.existing || []).length;
-    card.done('warn', '重名未传', `${target} 里已经有 ${copies} 份同名的书。\n` +
-      '服务端不覆盖也不去重：再传会多出一份独立副本，设备端两本无法区分。\n' +
-      '确实要传：勾上「重名也传」再拖一次。');
+    card.done('warn', t('push.state.skipped'), t('push.dupCard', {target, copies}));
     return;
   }
-  card.done('err', '被拒绝', detail.message || `失败：HTTP ${r.status}`);
+  card.done('err', t('push.state.refused'), httpError(r.status, detail));
 }
 
 async function uploadAll(files) {
