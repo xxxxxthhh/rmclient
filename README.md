@@ -21,7 +21,7 @@ has been tested on. The endpoint contract and its pitfalls are documented in
 | Page | What it does |
 |---|---|
 | `/` | Drag epub/pdf/rmdoc in, pick a target folder, upload. Per-file progress and results. |
-| `/tree` | The whole document tree: search, sort, create/rename/move/delete (single or multi-select), upload into any folder, download originals, duplicate report. |
+| `/tree` | The whole document tree: search, sort, create/rename/move/delete (single or multi-select), upload into any folder, download originals (or the whole `.rmdoc` package — that is where device annotations live), duplicate report. |
 | `/preview/<id>` | Render a notebook's pages as SVG, page through them, export the whole notebook as PDF. |
 
 The CLI covers pushing:
@@ -114,6 +114,9 @@ evidence, are in [`spike/REPORT.md`](spike/REPORT.md).
   meant to move something.
 - **The duplicate report never deletes anything.** It groups documents by
   visible name and shows you where they are; which copy to keep is your call.
+- **"Download" gives you the original, not your annotations.** For an epub you
+  annotated on the device, the package also contains a device-generated PDF
+  rendition carrying the ink; use the package download (`?package=1`) to get it.
 
 ## API contract at a glance
 
@@ -140,6 +143,14 @@ in [`spike/REPORT.md`](spike/REPORT.md).
   120 s read timeout.
 - A document's `size` in the tree is the sum of all its blobs, not the size of
   the original file.
+
+### Known limitations
+
+- `serve` logs in once and never renews the session, so a long-running instance
+  starts returning 401 once the JWT expires. Restart the process.
+- Every write re-reads the document tree; fine for a personal library, not
+  optimised for huge ones.
+- The trash is displayed read-only: no restore, no empty.
 
 ## Development
 
