@@ -449,7 +449,8 @@ def main(argv: list[str] | None = None) -> int:
     journal = Path(tempfile.mkdtemp(prefix="rmclient-demo-")) / "deleted.json"
 
     app = build_app(DemoCloud(), journal)
-    print(BANNER.format(port=args.port))
+    # flush：stdout 重定向到文件/管道时是块缓冲的，不刷用户先看到的是一片空白
+    print(BANNER.format(port=args.port), flush=True)
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
     return 0
 

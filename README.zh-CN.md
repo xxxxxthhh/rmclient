@@ -29,6 +29,29 @@ rmclient push book.epub --to Books --force # 明知重名也要再传一份
 rmclient serve --port 8000                 # 起 Web 界面
 ```
 
+## 不用服务器也能试
+
+没有 rmfakecloud、也没有任何凭据，照样能看到它长什么样：
+
+```bash
+uv run python scripts/demo_serve.py          # → http://127.0.0.1:8001
+uv run python scripts/demo_serve.py --port 9000
+```
+
+这会用一个内存假云把真实的 Web 界面起起来。上传、移动、重命名、删除计划、
+复活复查、重名检测、笔记预览与 PDF 导出，走的都是和真实部署完全相同的代码，
+只是底下没有 socket——**没有任何东西离开你的机器**。状态在内存里，进程一停就没了。
+
+数据集只用公版书（`The Odyssey`、`Moby-Dick`、`On Computable Numbers`……），
+拿去截图放文档里是安全的，全程不涉及任何真实书库。这份数据特意摆出了那些
+容易被忽略的地方：
+
+- 一个锁定的 `Mailbox` 目录——写进去一律被拒，读不受影响；
+- 两组重名，其中一组有一份在锁定目录里；
+- 带合成笔迹的笔记本，所以预览和 PDF 导出都是真的；
+- 删掉 `Notes/Sketchbook`，再点 **复活复查**：假设备会把它按原 UUID 推回来，
+  只推一次（见 [安全须知](#安全须知)）。
+
 ## 快速上手
 
 需要 Python 3.14 和 [uv](https://docs.astral.sh/uv/)。
@@ -172,6 +195,7 @@ rmclient 依赖的端点，以及每个端点各自的坑。完整证据在
 | v1 | 内容管理器：搜索与排序、多选批量移动与删除、原件/整包下载、全库重名报告（§12）。 |
 | UI | 三个页面统一做了一轮呈现层：CSS token 设计体系与暗色模式、统一顶栏、吸附工具栏、底部悬浮批量条、toast、骨架态、键盘翻页。 |
 | i18n | 默认英文、中文完整保留：三页共用一份字符串表，顶栏可切换，服务端错误码给本地化主提示，CLI 全英文。 |
+| demo | 离线 demo：真界面 + 内存假云 + 公版书数据集，没有服务器也能试玩，也能安全截图。 |
 
 ## 仓库结构
 
@@ -190,7 +214,8 @@ rmclient/
   pages/        push.html（拖拽推书）、tree.html（管理器）、
                 preview.html（笔记预览）、app.css（共用设计 token）、
                 i18n.js（三页共用的字符串表与 t()）
-scripts/        dump_tree.py —— 只读打印文档树
+scripts/        demo_serve.py —— 内存假云上的离线 demo 界面
+                dump_tree.py  —— 只读打印文档树
 spike/          可行性验证代码与 REPORT.md（端点契约）
 tests/          离线测试
 ```

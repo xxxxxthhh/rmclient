@@ -33,6 +33,34 @@ rmclient push book.epub --to Books --force # push even though a same-named book 
 rmclient serve --port 8000                 # start the web UI
 ```
 
+## Try it without a server
+
+You do not need an rmfakecloud server — or any credentials — to see what this
+looks like:
+
+```bash
+uv run python scripts/demo_serve.py          # → http://127.0.0.1:8001
+uv run python scripts/demo_serve.py --port 9000
+```
+
+That starts the real web UI against an in-memory demo cloud. Uploading, moving,
+renaming, the delete plan, the resurrection re-check, the duplicate report,
+notebook preview and PDF export all run through the same code as a real
+deployment — there is just no socket underneath, so **nothing leaves your
+machine**. State lives in memory and is thrown away when you stop the process.
+
+The dataset is public-domain titles only (`The Odyssey`, `Moby-Dick`,
+`On Computable Numbers`, …), so it is safe to screenshot for documentation —
+no real library is ever involved. It is arranged to show the things that are
+easy to miss:
+
+- a locked `Mailbox` folder — every write into it is refused, reading is not;
+- two duplicate groups, one with a copy inside the locked folder;
+- notebooks with synthetic handwriting, so preview and PDF export are real;
+- delete `Notes/Sketchbook`, then hit **Resurrection re-check**: the demo device
+  pushes it back under its original UUID, exactly once (see
+  [Safety notes](#safety-notes)).
+
 ## Quickstart
 
 Requires Python 3.14 and [uv](https://docs.astral.sh/uv/).
@@ -199,6 +227,7 @@ contract findings live in [`spike/REPORT.md`](spike/REPORT.md).
 | v1 | The content manager: search and sort, multi-select batch move and delete, original/package download, whole-library duplicate report (§12). |
 | UI | A design pass across all three pages: CSS-token design system with dark mode, one shared topbar, sticky toolbar, floating batch dock, toasts, skeletons, keyboard paging. |
 | i18n | English by default with Chinese kept complete: one shared string table, a top-bar language switch, localized headlines for server error codes, and an English CLI. |
+| demo | An offline demo: the real UI on an in-memory cloud with a public-domain dataset, so the project can be tried — and screenshotted — without a server. |
 
 ## Repository layout
 
@@ -217,7 +246,8 @@ rmclient/
   pages/        push.html (drag and drop), tree.html (manager),
                 preview.html (notebook viewer), app.css (shared design tokens),
                 i18n.js (string table + t(), shared by all three pages)
-scripts/        dump_tree.py — read-only tree dump
+scripts/        demo_serve.py — offline demo UI on an in-memory cloud
+                dump_tree.py  — read-only tree dump
 spike/          feasibility work and REPORT.md, the endpoint contract
 tests/          offline test suite
 ```
