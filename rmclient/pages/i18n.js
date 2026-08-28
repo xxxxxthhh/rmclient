@@ -137,7 +137,7 @@ const STRINGS = {
 "preview.exportPdf": "Export PDF",
 "preview.prev": "← Previous",
 "preview.next": "Next →",
-"preview.keyHint": "← → page too",
+"preview.keyHint": "← → keys turn pages",
 "preview.count": "Page {n} / {total}",
 "preview.kind": "{type} · pages: {pages}",
 "preview.pageAlt": "Page {n}",

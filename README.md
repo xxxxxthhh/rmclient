@@ -18,6 +18,12 @@ has been tested on. The endpoint contract and its pitfalls are documented in
 
 ## What you get
 
+![The document tree](docs/screenshots/tree.jpg)
+
+| Push | Notebook preview |
+|---|---|
+| ![Push page](docs/screenshots/push.jpg) | ![Preview page](docs/screenshots/preview.jpg) |
+
 | Page | What it does |
 |---|---|
 | `/` | Drag epub/pdf/rmdoc in, pick a target folder, upload. Per-file progress and results. |
