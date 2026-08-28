@@ -3,6 +3,7 @@
     rmclient push book.epub                  # 传到根级
     rmclient push book.epub --to Books/CS    # 按树上的可见名路径指定目录
     rmclient push book.epub --to Books --force   # 明知重名也要再传一份
+    rmclient setup                           # 交互式写配置，随即验证连得上
     rmclient serve                           # 起本地 Web
     rmclient demo                            # 离线试玩，不需要服务器和凭据
 
@@ -103,6 +104,12 @@ def cmd_serve(args) -> int:
     return 0
 
 
+def cmd_setup(args) -> int:
+    from .wizard import run
+
+    return run(non_interactive=args.non_interactive)
+
+
 def cmd_demo(args) -> int:
     """离线 demo：内存假云 + 公版书数据集，不读凭据、不出网。"""
     from .demo import run
@@ -128,6 +135,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("setup", help="configure the server URL, e-mail and password")
+    p.add_argument("--non-interactive", action="store_true",
+                   help="fail instead of prompting (use the environment variables in scripts)")
+    p.set_defaults(func=cmd_setup)
 
     p = sub.add_parser("demo", help="try the web UI offline, against an in-memory demo cloud")
     p.add_argument("--port", type=int, default=8001,
