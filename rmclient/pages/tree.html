@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8"><title>rmclient — 文档树</title>
+<style>
+ body{font:15px/1.6 system-ui,sans-serif;max-width:52rem;margin:3rem auto;padding:0 1rem;color:#222}
+ h1{font-size:1.3rem}
+ nav{color:#888;margin-bottom:.5rem}
+ nav a{color:#345;text-decoration:none;margin-right:.2rem}
+ .node{padding:.1rem 0}
+ .kids{margin-left:1.1rem;border-left:1px solid #eee;padding-left:.6rem}
+ summary{cursor:pointer;list-style:none}
+ summary::-webkit-details-marker{display:none}
+ summary::before{content:"▸ ";color:#999}
+ details[open]>summary::before{content:"▾ "}
+ .meta{color:#888;font-size:.85em;margin-left:.4rem}
+ .locked{opacity:.62}
+ .badge{background:#eee;color:#666;border-radius:4px;padding:0 .35rem;font-size:.75em;margin-left:.35rem}
+ .msg{padding:.7rem 1rem;border-radius:8px;margin:.6rem 0;white-space:pre-wrap}
+ .err{background:#fdecea}
+ #trash{color:#777}
+</style>
+<nav><a href="/">推书</a> · <a href="/tree">文档树</a></nav>
+<h1>文档树</h1>
+<div id="log"></div>
+<div id="tree">读取中…</div>
+<details id="trash-wrap" hidden>
+  <summary>回收站（<span id="trash-count">0</span> 项，只读）</summary>
+  <div id="trash" class="kids"></div>
+</details>
+<script>
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
+const say = (cls, text) => document.getElementById('log').append(el('div', 'msg ' + cls, text));
+
+function renderDoc(node) {
+  const row = el('div', 'node' + (node.locked ? ' locked' : ''));
+  row.append(el('span', null, '· ' + node.name));
+  row.append(el('span', 'meta', `[${node.type || '?'}, ${kb(node.size)}, ${(node.lastModified || '').slice(0, 10)}]`));
+  if (node.locked) row.append(el('span', 'badge', '🔒 只读'));
+  return row;
+}
+
+function renderFolder(node) {
+  const box = el('details', 'node' + (node.locked ? ' locked' : ''));
+  const head = el('summary', null, '📁 ' + node.name);
+  if (node.locked) head.append(el('span', 'badge', '🔒 只读'));
+  box.append(head);
+  const kids = el('div', 'kids');
+  renderInto(kids, node.children);
+  box.append(kids);
+  return box;
+}
+
+function renderInto(container, nodes) {
+  container.textContent = '';
+  const sorted = [...nodes].sort((a, b) =>
+    (a.kind === b.kind) ? a.name.localeCompare(b.name) : (a.kind === 'folder' ? -1 : 1));
+  for (const node of sorted) {
+    container.append(node.kind === 'folder' ? renderFolder(node) : renderDoc(node));
+  }
+  if (!nodes.length) container.append(el('div', 'meta', '（空）'));
+}
+
+async function load() {
+  const r = await fetch('/api/tree');
+  if (!r.ok) { say('err', '读不到文档树，看下终端里的报错'); return; }
+  const data = await r.json();
+  renderInto(document.getElementById('tree'), data.entries);
+  const wrap = document.getElementById('trash-wrap');
+  wrap.hidden = !data.trash.length;
+  document.getElementById('trash-count').textContent = data.trash.length;
+  renderInto(document.getElementById('trash'), data.trash);
+}
+
+load();
+</script>

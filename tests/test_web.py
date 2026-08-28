@@ -101,3 +101,38 @@ def test_upload_refuses_an_unknown_parent(web):
     )
     assert r.status_code == 400
     assert r.json()["detail"]["reason"] == "bad_target"
+
+
+# ---- 树浏览 --------------------------------------------------------
+
+
+def test_tree_page_is_served_and_links_to_the_push_page(web):
+    r = web[0].get("/tree")
+    assert r.status_code == 200
+    assert 'href="/"' in r.text and "文档树" in r.text
+
+
+def test_push_page_links_to_the_tree(web):
+    assert 'href="/tree"' in web[0].get("/").text
+
+
+def test_api_tree_marks_the_whole_mailbox_subtree_locked(web):
+    data = web[0].get("/api/tree").json()
+    mailbox = next(n for n in data["entries"] if n["name"] == "Mailbox")
+    assert mailbox["locked"] is True
+    assert [c["locked"] for c in mailbox["children"]] == [True]
+    books = next(n for n in data["entries"] if n["name"] == "Books")
+    assert books["locked"] is False
+    assert all(c["locked"] is False for c in books["children"])
+
+
+def test_api_tree_carries_what_the_rows_display(web):
+    data = web[0].get("/api/tree").json()
+    books = next(n for n in data["entries"] if n["id"] == "books")
+    doc = next(c for c in books["children"] if c["kind"] == "doc")
+    assert (doc["type"], doc["size"], doc["parent"]) == ("epub", 3993, "books")
+    assert next(c for c in books["children"] if c["kind"] == "folder")["children"] == []
+
+
+def test_api_tree_includes_the_trash(web):
+    assert [n["id"] for n in web[0].get("/api/tree").json()["trash"]] == ["t1"]

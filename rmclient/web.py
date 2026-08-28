@@ -9,15 +9,24 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 
 from .api import RmApiError, RmClient
-from .models import Folder, PathError, Tree, walk
+from .models import Folder, PathError, Tree, mailbox_ids, walk
 from .push import DuplicateName, push
 from .validate import ValidationError
 
 app = FastAPI(title="rmclient")
+
+_PAGES = Path(__file__).resolve().parent / "pages"
+
+
+def page(name: str) -> str:
+    """每次请求重读一遍：改完 HTML 刷新页面就行，不用重启进程。"""
+    return (_PAGES / name).read_text()
 
 _client: RmClient | None = None
 
@@ -44,6 +53,38 @@ def folder_options(tree: Tree) -> list[dict]:
         key=lambda o: o["path"],
     )
     return options
+
+
+def tree_json(tree: Tree) -> dict:
+    """整棵树给页面用。locked = 信箱子树，页面据此标只读并且不给任何操作按钮。"""
+    locked = mailbox_ids(tree.entries)
+
+    def node_json(node) -> dict:
+        base = {
+            "id": node.id,
+            "name": node.name,
+            "parent": node.parent,
+            "lastModified": node.last_modified,
+            "locked": node.id in locked,
+        }
+        if isinstance(node, Folder):
+            return base | {"kind": "folder", "children": [node_json(c) for c in node.children]}
+        return base | {"kind": "doc", "type": node.type, "size": node.size}
+
+    return {
+        "entries": [node_json(n) for n in tree.entries],
+        "trash": [node_json(n) for n in tree.trash],
+    }
+
+
+@app.get("/api/tree")
+def api_tree(client: RmClient = Depends(get_client)) -> dict:
+    return tree_json(client.list_tree())
+
+
+@app.get("/tree", response_class=HTMLResponse)
+def tree_page() -> str:
+    return page("tree.html")
 
 
 @app.get("/api/folders")
@@ -85,83 +126,6 @@ async def api_upload(
     }
 
 
-PAGE = """<!doctype html>
-<meta charset="utf-8"><title>rmclient — 推书</title>
-<style>
- body{font:15px/1.6 system-ui,sans-serif;max-width:44rem;margin:3rem auto;padding:0 1rem;color:#222}
- h1{font-size:1.3rem}
- #drop{border:2px dashed #bbb;border-radius:10px;padding:3rem 1rem;text-align:center;color:#666;
-       transition:.15s;cursor:pointer}
- #drop.hot{border-color:#333;background:#f6f6f6;color:#222}
- .row{margin:1rem 0;display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
- select{flex:1;min-width:14rem;padding:.35rem}
- .msg{padding:.8rem 1rem;border-radius:8px;margin:.6rem 0;white-space:pre-wrap}
- .ok{background:#e8f5e9}.err{background:#fdecea}.warn{background:#fff8e1}
- code{background:#f0f0f0;padding:.1rem .3rem;border-radius:4px}
-</style>
-<h1>推书到 reMarkable</h1>
-<div class="row">
-  <label>目标目录</label>
-  <select id="parent"></select>
-  <label><input type="checkbox" id="force"> 重名也传</label>
-</div>
-<div id="drop">把 .epub / .pdf / .rmdoc 拖到这里，或点击选择</div>
-<input type="file" id="picker" hidden accept=".epub,.pdf,.rmdoc">
-<div id="log"></div>
-<script>
-const drop = document.getElementById('drop'), picker = document.getElementById('picker'),
-      parent = document.getElementById('parent'), force = document.getElementById('force'),
-      log = document.getElementById('log');
-
-function say(cls, text) {
-  const div = document.createElement('div');
-  div.className = 'msg ' + cls; div.textContent = text;
-  log.prepend(div);
-}
-
-fetch('/api/folders').then(r => r.json()).then(d => {
-  for (const f of d.folders) {
-    const o = document.createElement('option');
-    o.value = f.id; o.textContent = f.path; parent.append(o);
-  }
-}).catch(() => say('err', '读不到文档树，看下终端里的报错'));
-
-async function upload(file) {
-  const body = new FormData();
-  body.append('file', file); body.append('parent', parent.value);
-  body.append('force', force.checked ? 'true' : 'false');
-  say('warn', `上传中：${file.name} → ${parent.options[parent.selectedIndex].text}`);
-  const r = await fetch('/api/upload', {method: 'POST', body});
-  const d = await r.json().catch(() => ({}));
-  if (r.ok) {
-    let text = `✓ 已上传「${d.name}」\\nUUID ${d.id}\\n设备端需要同步一次才会出现`;
-    if (d.duplicates) text += `\\n⚠ 同名的还有 ${d.duplicates} 份，设备端会看到 ${d.duplicates + 1} 本同名书`;
-    say('ok', text);
-    return;
-  }
-  const detail = d.detail || {};
-  if (detail.reason === 'duplicate') {
-    const names = (detail.existing || []).map(e => `  已有：${e.id}`).join('\\n');
-    say('err', `目标目录里已经有同名的书（${(detail.existing || []).length} 份）。\\n` +
-               `服务端不覆盖也不去重：再传会多出一份独立副本，设备端两本无法区分。\\n` +
-               `确实要传就勾上「重名也传」。\\n${names}`);
-  } else {
-    say('err', detail.message || `失败：HTTP ${r.status}`);
-  }
-}
-
-drop.onclick = () => picker.click();
-picker.onchange = () => { for (const f of picker.files) upload(f); picker.value = ''; };
-drop.ondragover = e => { e.preventDefault(); drop.classList.add('hot'); };
-drop.ondragleave = () => drop.classList.remove('hot');
-drop.ondrop = e => {
-  e.preventDefault(); drop.classList.remove('hot');
-  for (const f of e.dataTransfer.files) upload(f);
-};
-</script>
-"""
-
-
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    return PAGE
+    return page("push.html")
