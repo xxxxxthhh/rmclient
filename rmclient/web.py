@@ -10,9 +10,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from .api import RmApiError, RmClient
 from .journal import DeletionJournal
@@ -25,8 +26,9 @@ from .manage import (
     plan_delete,
     rename,
 )
-from .models import Folder, PathError, Tree, mailbox_ids, walk
+from .models import Folder, PathError, Tree, find, mailbox_ids, walk
 from .push import DuplicateName, push
+from .render import Notebook, page_to_svg, pages_to_pdf, parse_rmdoc
 from .validate import ValidationError
 
 app = FastAPI(title="rmclient")
@@ -185,6 +187,82 @@ def api_deleted_clear(
 ) -> dict:
     """清记录：给了 ids 就清这几条，没给就整个清空。清的只是本地记录，不碰云。"""
     return {"cleared": journal.remove(ids) if ids else journal.clear()}
+
+
+# ---- 预览（全程只读）------------------------------------------------
+
+# 导出一本要走网络 + 解析，翻页时不该每次重来。键里带 lastModified：设备上改过
+# 再同步回来的笔记 UUID 不变，只有这个字段会动。
+_CACHE_SIZE = 4
+_notebooks: dict[tuple[str, str], Notebook] = {}
+
+
+def _load(client: RmClient, doc_id: str) -> tuple[str, Notebook]:
+    """返回 (可见名, 解析好的本子)。
+
+    这是**唯一接受信箱 id 的路由族** —— 只读导出正是 SPEC M3 的验收路径，
+    锁只针对写操作。这里从头到尾只有 GET。
+    """
+    node = find(client.list_tree().entries, doc_id)
+    if node is None:
+        raise HTTPException(404, {"reason": "not_found", "message": f"{doc_id} not in tree"})
+    if isinstance(node, Folder):
+        raise HTTPException(400, {"reason": "invalid", "message": "folders have no preview"})
+    key = (doc_id, node.last_modified)
+    notebook = _notebooks.get(key)
+    if notebook is None:
+        notebook = parse_rmdoc(client.export_rmdoc(doc_id))
+        if len(_notebooks) >= _CACHE_SIZE:
+            _notebooks.pop(next(iter(_notebooks)))
+        _notebooks[key] = notebook
+    return node.name, notebook
+
+
+def _notebook_or_415(name: str, notebook: Notebook) -> Notebook:
+    if notebook.file_type != "notebook":
+        raise HTTPException(
+            415,
+            {
+                "reason": "unsupported",
+                "fileType": notebook.file_type,
+                "message": f"「{name}」是 {notebook.file_type or '未知类型'}，只有原生笔记（notebook）能预览",
+            },
+        )
+    return notebook
+
+
+@app.get("/api/preview/{doc_id}")
+def api_preview(doc_id: str, client: RmClient = Depends(get_client)) -> dict:
+    name, notebook = _load(client, doc_id)
+    _notebook_or_415(name, notebook)
+    return {"id": doc_id, "name": name, "fileType": notebook.file_type,
+            "pages": len(notebook.pages)}
+
+
+@app.get("/api/preview/{doc_id}/page/{number}")
+def api_preview_page(doc_id: str, number: int, client: RmClient = Depends(get_client)) -> Response:
+    name, notebook = _load(client, doc_id)
+    _notebook_or_415(name, notebook)
+    if not 1 <= number <= len(notebook.pages):
+        raise HTTPException(404, {"reason": "not_found", "message": f"没有第 {number} 页"})
+    return Response(page_to_svg(notebook.pages[number - 1]), media_type="image/svg+xml")
+
+
+@app.get("/api/preview/{doc_id}/pdf")
+def api_preview_pdf(doc_id: str, client: RmClient = Depends(get_client)) -> Response:
+    name, notebook = _load(client, doc_id)
+    _notebook_or_415(name, notebook)
+    filename = quote(f"{name}.pdf")
+    return Response(
+        pages_to_pdf(notebook.pages),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
+
+
+@app.get("/preview/{doc_id}", response_class=HTMLResponse)
+def preview_page(doc_id: str) -> str:
+    return page("preview.html")
 
 
 @app.get("/tree", response_class=HTMLResponse)

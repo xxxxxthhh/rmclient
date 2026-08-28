@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8"><title>rmclient — 笔记预览</title>
+<style>
+ body{font:15px/1.6 system-ui,sans-serif;max-width:56rem;margin:2rem auto;padding:0 1rem;color:#222}
+ nav{color:#888;margin-bottom:.5rem}
+ nav a{color:#345;text-decoration:none;margin-right:.2rem}
+ header{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap}
+ h1{font-size:1.2rem;margin:.2rem 0}
+ .meta{color:#888;font-size:.9em}
+ a.button{font-size:.9em;padding:.25rem .8rem;border:1px solid #ccc;border-radius:6px;
+          background:#fafafa;color:#345;text-decoration:none}
+ .msg{padding:.8rem 1rem;border-radius:8px;margin:.8rem 0;white-space:pre-wrap}
+ .err{background:#fdecea}
+ .page{margin:1.2rem 0}
+ .page img{width:100%;border:1px solid #e2e2e2;border-radius:4px;background:#fff}
+ .num{color:#999;font-size:.85em}
+</style>
+<nav><a href="/">推书</a> · <a href="/tree">文档树</a> · 预览</nav>
+<header>
+  <h1 id="title">读取中…</h1>
+  <span class="meta" id="count"></span>
+  <a class="button" id="pdf" hidden>导出 PDF</a>
+</header>
+<div id="log"></div>
+<div id="pages"></div>
+<script>
+const docId = location.pathname.split('/').pop();
+
+async function load() {
+  const r = await fetch(`/api/preview/${docId}`);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    document.getElementById('title').textContent = '打不开';
+    const box = document.createElement('div');
+    box.className = 'msg err';
+    box.textContent = (d.detail && d.detail.message) || `失败：HTTP ${r.status}`;
+    document.getElementById('log').append(box);
+    return;
+  }
+  document.title = `${d.name} — rmclient`;
+  document.getElementById('title').textContent = d.name;
+  document.getElementById('count').textContent = `${d.pages} 页 · ${d.fileType}`;
+  const pdf = document.getElementById('pdf');
+  pdf.href = `/api/preview/${docId}/pdf`;
+  pdf.hidden = false;
+
+  const box = document.getElementById('pages');
+  for (let n = 1; n <= d.pages; n++) {
+    const wrap = document.createElement('div');
+    wrap.className = 'page';
+    const num = document.createElement('div');
+    num.className = 'num';
+    num.textContent = `第 ${n} / ${d.pages} 页`;
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    img.alt = `第 ${n} 页`;
+    img.src = `/api/preview/${docId}/page/${n}`;
+    wrap.append(num, img);
+    box.append(wrap);
+  }
+}
+
+load();
+</script>

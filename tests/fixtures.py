@@ -257,3 +257,26 @@ def rmdoc(pages: dict, file_type: str = "notebook", listed=None, doc_id: str = "
         for page_id, data in pages.items():
             z.writestr(f"{doc_id}/{page_id}.rm", data)
     return buf.getvalue()
+
+
+def preview_handler(pages: int = 2):
+    """假云 + 真实形状的 rmdoc：b1/mb-doc 是笔记本，loose 是 epub（不支持预览）。"""
+    from rmscene import scene_items as si
+
+    notebook = rmdoc({
+        f"page{i}": rm_page([rm_line([(0, 100 * (i + 1)), (100, 200)],
+                                     color=si.PenColor.BLACK)])
+        for i in range(pages)
+    })
+    not_a_notebook = rmdoc({}, file_type="epub")
+    exports = {"b1": notebook, "mb-doc": notebook, "loose": not_a_notebook}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET" and request.url.params.get("type") == "rmdoc":
+            doc_id = request.url.path.rsplit("/", 1)[1]
+            if doc_id in exports:
+                return httpx.Response(200, content=exports[doc_id])
+            return httpx.Response(404, json={"error": "not found"})
+        return default_handler(request)
+
+    return handler

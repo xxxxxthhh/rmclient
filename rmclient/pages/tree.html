@@ -60,10 +60,12 @@ const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.round(n / 
 const say = (cls, text) => document.getElementById('log').append(el('div', 'msg ' + cls, text));
 
 function actions(node, allowed) {
-  // 信箱子树一个按钮都不给（服务端也会再拒一次，前端过滤只是展示）。回收站同理。
   const box = el('span', 'acts');
-  if (node.locked || !allowed) return box;
   const add = (label, fn) => { const b = el('button', null, label); b.onclick = e => { e.preventDefault(); fn(); }; box.append(b); };
+  // 预览是只读导出，信箱里的笔记也给（锁只针对写操作）；回收站不给。
+  if (node.kind === 'doc' && allowed) add('预览', () => { location.href = '/preview/' + node.id; });
+  // 写操作：信箱子树一个按钮都不给（服务端也会再拒一次，前端过滤只是展示）。
+  if (node.locked || !allowed) return box;
   if (node.kind === 'folder') add('＋目录', () => askNewFolder(node.id, node.name));
   add('重命名', () => askRename(node));
   add('移动', () => askMove(node));

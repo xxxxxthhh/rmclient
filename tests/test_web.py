@@ -5,9 +5,10 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from rmclient import web as web_module
 from rmclient.journal import DeletionJournal
 from rmclient.web import app, get_client, get_journal
-from tests.fixtures import logged_in, stateful_handler, tiny_epub, tiny_pdf
+from tests.fixtures import logged_in, preview_handler, stateful_handler, tiny_epub, tiny_pdf
 
 
 @pytest.fixture
@@ -372,3 +373,81 @@ def test_tree_page_carries_the_pending_block_and_no_longer_posts_ids(web):
     assert 'id="pending"' in html and "loadPending()" in html
     # 复查的 UUID 来自文件，页面不再自己攒一份
     assert "/api/resurrection', {method: 'POST'}" in html
+
+
+# ---- 笔记预览（只读）----------------------------------------------
+
+
+@pytest.fixture
+def preview_web(journal):
+    client, seen = logged_in(preview_handler())
+    app.dependency_overrides[get_client] = lambda: client
+    app.dependency_overrides[get_journal] = lambda: journal
+    web_module._notebooks.clear()  # 缓存是模块级的，测试之间清干净
+    with TestClient(app) as test_client:
+        yield test_client, seen, client
+    app.dependency_overrides.clear()
+
+
+def test_preview_meta_reports_pages_and_name(preview_web):
+    client, _, _ = preview_web
+    body = client.get("/api/preview/b1").json()
+    assert body == {"id": "b1", "name": "Book One", "fileType": "notebook", "pages": 2}
+
+
+def test_preview_page_serves_svg(preview_web):
+    client, _, _ = preview_web
+    r = client.get("/api/preview/b1/page/1")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("image/svg+xml")
+    assert r.text.startswith("<svg") and "<polyline" in r.text
+
+
+def test_preview_page_out_of_range_is_404(preview_web):
+    assert preview_web[0].get("/api/preview/b1/page/9").status_code == 404
+
+
+def test_preview_pdf_downloads_the_whole_notebook(preview_web):
+    r = preview_web[0].get("/api/preview/b1/pdf")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert "attachment" in r.headers["content-disposition"]
+    assert r.content.startswith(b"%PDF") and b"/Count 2" in r.content
+
+
+def test_preview_refuses_a_non_notebook_with_a_clear_reason(preview_web):
+    r = preview_web[0].get("/api/preview/loose")
+    assert r.status_code == 415
+    detail = r.json()["detail"]
+    assert detail["reason"] == "unsupported" and detail["fileType"] == "epub"
+    assert "只有原生笔记" in detail["message"]
+
+
+def test_preview_refuses_a_folder_and_an_unknown_id(preview_web):
+    client, _, _ = preview_web
+    assert client.get("/api/preview/books").status_code == 400
+    assert client.get("/api/preview/ghost").status_code == 404
+
+
+def test_mailbox_notebooks_can_be_previewed_read_only(preview_web):
+    # 预览是唯一接受信箱 id 的路由族——只读导出正是 M3 的验收路径。
+    client, seen, _ = preview_web
+    assert client.get("/api/preview/mb-doc").status_code == 200
+    assert client.get("/api/preview/mb-doc/page/1").status_code == 200
+    assert client.get("/api/preview/mb-doc/pdf").status_code == 200
+    assert {r.method for r in seen} == {"GET"}  # 全程只读
+
+
+def test_export_is_cached_across_page_requests(preview_web):
+    client, seen, _ = preview_web
+    client.get("/api/preview/b1")
+    client.get("/api/preview/b1/page/1")
+    client.get("/api/preview/b1/page/2")
+    exports = [r for r in seen if r.url.params.get("type") == "rmdoc"]
+    assert len(exports) == 1
+
+
+def test_preview_page_is_served_and_the_tree_links_to_it(preview_web):
+    client, _, _ = preview_web
+    assert "笔记预览" in client.get("/preview/b1").text
+    assert "'/preview/' + node.id" in client.get("/tree").text
