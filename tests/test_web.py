@@ -540,3 +540,30 @@ def test_download_refuses_a_folder_and_an_unknown_id(preview_web):
     client, _, _ = preview_web
     assert client.get("/api/download/books").status_code == 400
     assert client.get("/api/download/ghost").status_code == 404
+
+
+# ---- 重名检测 ------------------------------------------------------
+
+
+def test_duplicates_route_groups_by_visible_name(journal):
+    from tests.fixtures import DUP_TREE, tree_handler
+
+    client, seen = logged_in(tree_handler(DUP_TREE))
+    app.dependency_overrides[get_client] = lambda: client
+    app.dependency_overrides[get_journal] = lambda: journal
+    with TestClient(app) as test_client:
+        groups = test_client.get("/api/duplicates").json()["groups"]
+    app.dependency_overrides.clear()
+    assert [g["name"] for g in groups] == ["Shared Name"]
+    assert len(groups[0]["items"]) == 3
+    assert {r.method for r in seen} == {"GET"}  # 只报告，一个写请求都没有
+
+
+def test_duplicates_route_is_empty_on_a_clean_tree(web):
+    assert web[0].get("/api/duplicates").json()["groups"] == []
+
+
+def test_tree_page_has_the_duplicate_panel_and_jump(web):
+    html = web[0].get("/tree").text
+    assert 'id="dupcheck"' in html and "/api/duplicates" in html
+    assert "function jumpTo(" in html and "scrollIntoView" in html

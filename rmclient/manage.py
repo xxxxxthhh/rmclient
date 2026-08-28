@@ -104,6 +104,35 @@ def plan_delete(tree: Tree, node_id: str) -> list[dict]:
     return sorted(items, key=lambda i: i["depth"], reverse=True)
 
 
+def duplicate_groups(tree: Tree) -> list[dict]:
+    """全库按可见名分组，同名 ≥2 的文档列出来。**只报告，不动手。**
+
+    只看文档：同名目录是服务端允许的正常情况（REPORT §10 实测过），不算重名。
+    信箱里的也列（这是只读报告），但打上 locked，界面上不给任何操作。
+    """
+    locked = mailbox_ids(tree.entries)
+    groups: dict[str, list[dict]] = {}
+    for path, node in walk(tree.entries):
+        if not isinstance(node, Document):
+            continue
+        groups.setdefault(node.name, []).append(
+            {
+                "id": node.id,
+                "name": node.name,
+                "path": "/".join(path),
+                "size": node.size,
+                "lastModified": node.last_modified,
+                "type": node.type,
+                "locked": node.id in locked,
+            }
+        )
+    return [
+        {"name": name, "items": items}
+        for name, items in sorted(groups.items())
+        if len(items) >= 2
+    ]
+
+
 # ---- 执行（薄，真正的守卫在 api 层）--------------------------------
 
 

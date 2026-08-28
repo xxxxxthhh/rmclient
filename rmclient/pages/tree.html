@@ -24,6 +24,13 @@
  .msg{padding:.7rem 1rem;border-radius:8px;margin:.6rem 0;white-space:pre-wrap}
  .err{background:#fdecea}.ok{background:#e8f5e9}.warn{background:#fff8e1}
  #trash{color:#777}
+ #dups{background:#f4f4f8;border-radius:8px;padding:.8rem 1rem;margin:.6rem 0}
+ #dups h2{font-size:1rem;margin:0 0 .4rem}
+ #dups .group{margin:.5rem 0}
+ #dups .item{font-size:.9em;color:#555;margin-left:1rem}
+ #dups a{color:#345;cursor:pointer;text-decoration:underline}
+ #dups button{font:inherit;font-size:.85em;padding:.15rem .6rem;cursor:pointer;
+              border:1px solid #ccc;border-radius:5px;background:#fff}
  #batchbar{background:#eef4ff;border-radius:8px;padding:.5rem .9rem;margin:.4rem 0;
            display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
  #batchbar button{font:inherit;font-size:.9em;padding:.2rem .7rem;cursor:pointer;
@@ -57,9 +64,11 @@
     <option value="size">大小</option>
   </select>
   <button id="mkroot">＋ 新建根级目录</button>
+  <button id="dupcheck">重名检测</button>
   <button id="reload">刷新</button>
 </div>
 <div id="batchbar" hidden></div>
+<div id="dups" hidden></div>
 <div id="pending" hidden></div>
 <div id="log"></div>
 <div id="tree">读取中…</div>
@@ -437,6 +446,53 @@ async function askDelete(roots, label) {
   });
 }
 
+// ---- 重名检测（只报告，不给任何自动删除）----
+
+async function showDuplicates() {
+  const box = document.getElementById('dups');
+  const r = await fetch('/api/duplicates');
+  const d = await r.json().catch(() => ({groups: []}));
+  if (!r.ok) { say('err', '重名检测失败，看下终端里的报错'); return; }
+  box.hidden = false;
+  box.textContent = '';
+  const groups = d.groups || [];
+  box.append(el('h2', null, `重名检测：${groups.length} 组同名文档`));
+  box.append(el('div', 'meta', '同名不等于重复——哪一份该留只有你知道，这里只报告，不提供自动删除。'));
+  for (const g of groups) {
+    const wrap = el('div', 'group');
+    wrap.append(el('div', null, `「${g.name}」×${g.items.length}`));
+    for (const item of g.items) {
+      const line = el('div', 'item');
+      const link = el('a', null, (item.path ? item.path + '/' : '') + item.name);
+      link.onclick = () => jumpTo(item.id);
+      line.append(link);
+      line.append(el('span', 'meta',
+        `[${item.type || '?'}, ${kb(item.size)}, ${(item.lastModified || '').slice(0, 10)}]`));
+      if (item.locked) line.append(el('span', 'badge', '🔒 只读'));
+      wrap.append(line);
+    }
+    box.append(wrap);
+  }
+  if (!groups.length) box.append(el('div', null, '没有同名文档。'));
+  const close = el('button', null, '收起');
+  close.onclick = () => { box.hidden = true; };
+  box.append(el('div', null), close);
+}
+
+function jumpTo(id) {
+  const hit = INDEX.get(id);
+  if (!hit) return;
+  FILTER = '';
+  document.getElementById('search').value = '';
+  for (const ancestor of hit.ancestors) OPEN.add(ancestor);   // 展开祖先，否则滚过去也看不见
+  draw();
+  const row = document.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  if (!row) return;
+  row.scrollIntoView({block: 'center', behavior: 'smooth'});
+  row.classList.add('flash');
+  setTimeout(() => row.classList.remove('flash'), 2000);
+}
+
 // ---- 待复查的删除记录（存在本地文件里，刷新页面也还在）----
 
 async function loadPending() {
@@ -496,6 +552,7 @@ document.getElementById('search').oninput = ev => {
 };
 document.getElementById('sort').onchange = ev => { SORT = ev.target.value; draw(); };
 document.getElementById('mkroot').onclick = () => askNewFolder('', '根级');
+document.getElementById('dupcheck').onclick = showDuplicates;
 document.getElementById('reload').onclick = () => { loadPending(); load(); };
 loadPending();
 load();

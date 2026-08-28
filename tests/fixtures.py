@@ -286,3 +286,41 @@ def preview_handler(pages: int = 2):
         return default_handler(request)
 
     return handler
+
+
+def tree_handler(payload: dict):
+    """只换一棵树的假云，其余路由照旧。"""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/ui/api/documents" and request.method == "GET":
+            return httpx.Response(200, json=payload)
+        return default_handler(request)
+
+    return handler
+
+
+DUP_TREE = {
+    "Entries": [
+        {
+            "id": "mb",
+            "name": "Mailbox",
+            "isFolder": True,
+            "children": [{"id": "mb-dup", "name": "Shared Name", "type": "notebook", "size": 5}],
+        },
+        {
+            "id": "books",
+            "name": "Books",
+            "isFolder": True,
+            "children": [
+                {"id": "d1", "name": "Shared Name", "type": "epub", "size": 100,
+                 "lastModified": "2026-08-01T00:00:00Z"},
+                {"id": "dupfolder1", "name": "dup", "isFolder": True, "children": []},
+                {"id": "dupfolder2", "name": "dup", "isFolder": True, "children": []},
+            ],
+        },
+        {"id": "d2", "name": "Shared Name", "type": "pdf", "size": 200,
+         "lastModified": "2026-08-02T00:00:00Z"},
+        {"id": "only", "name": "Unique", "type": "pdf", "size": 1},
+    ],
+    "Trash": [],
+}

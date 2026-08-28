@@ -9,6 +9,7 @@ from rmclient.manage import (
     check_resurrection,
     create_folder,
     delete_subtrees,
+    duplicate_groups,
     move,
     move_many,
     plan_delete,
@@ -239,3 +240,43 @@ def test_move_many_refuses_a_mailbox_target_outright():
     with pytest.raises(PermissionError, match="Mailbox"):
         move_many(client, ["b1"], "mb")
     assert "PUT" not in [r.method for r in seen]
+
+
+# ---- 重名检测 ------------------------------------------------------
+
+
+def test_duplicate_groups_reports_documents_sharing_a_visible_name():
+    from rmclient.models import parse_tree
+
+    from tests.fixtures import DUP_TREE
+
+    groups = duplicate_groups(parse_tree(DUP_TREE))
+    assert [g["name"] for g in groups] == ["Shared Name"]
+    items = {i["id"]: i for i in groups[0]["items"]}
+    assert set(items) == {"d1", "d2", "mb-dup"}
+    assert items["d1"]["path"] == "Books" and items["d2"]["path"] == ""
+    assert (items["d1"]["size"], items["d1"]["type"]) == (100, "epub")
+
+
+def test_duplicate_groups_flags_mailbox_items_but_still_lists_them():
+    from rmclient.models import parse_tree
+
+    from tests.fixtures import DUP_TREE
+
+    items = {i["id"]: i for i in duplicate_groups(parse_tree(DUP_TREE))[0]["items"]}
+    assert items["mb-dup"]["locked"] is True
+    assert items["d1"]["locked"] is False
+
+
+def test_duplicate_groups_ignores_same_named_folders():
+    # 同名目录是服务端允许的正常情况（REPORT §10），不算重名。
+    from rmclient.models import parse_tree
+
+    from tests.fixtures import DUP_TREE
+
+    assert all(g["name"] != "dup" for g in duplicate_groups(parse_tree(DUP_TREE)))
+
+
+def test_duplicate_groups_is_empty_when_every_name_is_unique():
+    client, _ = logged_in()
+    assert duplicate_groups(tree_of(client)) == []

@@ -22,6 +22,7 @@ from .manage import (
     check_resurrection,
     create_folder,
     delete_subtrees,
+    duplicate_groups,
     move,
     move_many,
     plan_delete_many,
@@ -135,6 +136,12 @@ def api_move(
 ) -> dict:
     _manage(lambda: move(client, id, parent))
     return {"id": id, "parent": parent}
+
+
+@app.get("/api/duplicates")
+def api_duplicates(client: RmClient = Depends(get_client)) -> dict:
+    """重名报告：只读，不提供任何自动删除——哪一份该留只有人知道。"""
+    return {"groups": duplicate_groups(client.list_tree())}
 
 
 @app.post("/api/move/batch")
