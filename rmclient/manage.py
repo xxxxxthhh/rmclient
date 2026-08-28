@@ -85,7 +85,7 @@ def create_folder(client: RmClient, name: str, parent_id: str = "") -> Node:
     check_not_mailbox(tree, parent_id)
     if parent_id and not isinstance(find(tree.entries, parent_id), Folder):
         raise LookupError(f"{parent_id} is not a folder in the tree")
-    return client.create_folder(check_name(name), parent_id)
+    return client.create_folder(check_name(name), parent_id, entries=tree.entries)
 
 
 def rename(client: RmClient, node_id: str, new_name: str) -> str:

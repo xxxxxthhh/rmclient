@@ -98,6 +98,20 @@ class RmClient:
             raise RmApiError(method, url, r.status_code, _error_field(r), r.text[:200])
         return r
 
+    def _refuse_mailbox(
+        self, node_id: str, what: str, entries: Iterable[Node] | None = None
+    ) -> None:
+        """信箱子树是绝对禁区（CLAUDE.md 纪律 1），四个写操作默认路径都过这一关。
+
+        根级不用查（根不是信箱），省一次往返；调用方手上有新鲜的树就传进来。
+        """
+        if not node_id:
+            return
+        if entries is None:
+            entries = self.list_tree().entries
+        if node_id in mailbox_ids(entries):
+            raise PermissionError(f"refusing to {what} the Mailbox subtree: {node_id}")
+
     # ---- 读 --------------------------------------------------------
 
     def list_tree(self) -> Tree:
@@ -109,11 +123,16 @@ class RmClient:
 
     # ---- 写 --------------------------------------------------------
 
-    def create_folder(self, name: str, parent: str = _ROOT_FOLDERS) -> Node:
+    def create_folder(
+        self, name: str, parent: str = _ROOT_FOLDERS, *, entries: Iterable[Node] | None = None
+    ) -> Node:
+        self._refuse_mailbox(parent, "create a folder in", entries)
         r = self._request("POST", "/ui/api/folders", json={"parentId": parent, "name": name})
         return parse_write_response(r.json())
 
-    def upload(self, data: bytes, filename: str, parent: str = "") -> Node:
+    def upload(
+        self, data: bytes, filename: str, parent: str = "", *, entries: Iterable[Node] | None = None
+    ) -> Node:
         """上传。filename 必须带正确扩展名——服务端只认后缀，不校验内容。
 
         这里是 CLI 与 Web 共用的唯一上路口，所以后缀 + 内容校验都在这做，
@@ -124,6 +143,7 @@ class RmClient:
         type 也不可信（REPORT §4.1），要准确类型读 export_rmdoc 的 .content。
         """
         validate(data, filename)
+        self._refuse_mailbox(parent, "upload into", entries)
         r = self._request(
             "POST",
             "/ui/api/documents/upload",
@@ -153,11 +173,8 @@ class RmClient:
         """
         if entries is None:
             entries = self.list_tree().entries
-        locked = mailbox_ids(entries)
-        if doc_id in locked:
-            raise PermissionError(f"refusing to move {doc_id}: it is in the Mailbox subtree")
-        if parent_id and parent_id in locked:
-            raise PermissionError(f"refusing to move into the Mailbox subtree: {parent_id}")
+        self._refuse_mailbox(doc_id, "move out of", entries)
+        self._refuse_mailbox(parent_id, "move into", entries)
         if name is None:
             node = find(entries, doc_id)
             if node is None:
@@ -181,10 +198,7 @@ class RmClient:
         """
         if doc_id not in allowed_ids:
             raise PermissionError(f"refusing to delete {doc_id}: not in the explicit allow-list")
-        if entries is None:
-            entries = self.list_tree().entries
-        if doc_id in mailbox_ids(entries):
-            raise PermissionError(f"refusing to delete {doc_id}: it is in the Mailbox subtree")
+        self._refuse_mailbox(doc_id, "delete from", entries)
         self._request("DELETE", f"/ui/api/documents/{doc_id}")
 
     def delete_many(

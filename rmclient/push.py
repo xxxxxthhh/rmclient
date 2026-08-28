@@ -56,4 +56,4 @@ def push(
     existing = find_duplicates(tree, parent_id, name)
     if existing and not force:
         raise DuplicateName(name, existing)
-    return client.upload(data, filename, parent=parent_id), existing
+    return client.upload(data, filename, parent=parent_id, entries=tree.entries), existing

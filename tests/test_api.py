@@ -97,8 +97,29 @@ def test_upload_multipart_field_names_and_root_sentinel():
 
 def test_upload_into_a_folder_passes_the_uuid():
     client, seen = logged_in()
-    client.upload(tiny_epub(), "Book.epub", parent="f1")
-    assert b"f1" in seen[0].content
+    client.upload(tiny_epub(), "Book.epub", parent="cs")
+    assert b"cs" in seen[-1].content
+
+
+def test_upload_refuses_a_mailbox_parent():
+    client, seen = logged_in()
+    with pytest.raises(PermissionError, match="Mailbox"):
+        client.upload(tiny_epub(), "Book.epub", parent="mb")
+    assert "/ui/api/documents/upload" not in [r.url.path for r in seen]
+
+
+def test_upload_to_root_needs_no_tree_read():
+    # 根级不可能是信箱，省一次往返。
+    client, seen = logged_in()
+    client.upload(tiny_epub(), "Book.epub")
+    assert [r.method for r in seen] == ["POST"]
+
+
+def test_create_folder_refuses_a_mailbox_parent():
+    client, seen = logged_in()
+    with pytest.raises(PermissionError, match="Mailbox"):
+        client.create_folder("New", "mb")
+    assert "/ui/api/folders" not in [r.url.path for r in seen]
 
 
 def test_upload_rejects_bad_extension_before_any_request():
