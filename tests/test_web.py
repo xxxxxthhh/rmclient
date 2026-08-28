@@ -589,3 +589,28 @@ def test_download_package_of_a_notebook_matches_the_default(preview_web):
 def test_tree_page_offers_the_package_download(web):
     html = web[0].get("/tree").text
     assert "?package=1" in html and "含设备端的批注与笔迹" in html
+
+
+# ---- 呈现层 --------------------------------------------------------
+
+
+def test_stylesheet_is_served_with_the_design_tokens(web):
+    r = web[0].get("/static/app.css")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/css")
+    assert "--paper" in r.text and "--ink" in r.text
+    assert "prefers-color-scheme: dark" in r.text
+    assert r.headers["cache-control"] == "no-store"
+
+
+def test_every_page_shares_the_topbar_and_stylesheet(preview_web):
+    client, _, _ = preview_web
+    for path in ("/", "/tree", "/preview/b1"):
+        html = client.get(path).text
+        assert '<link rel="stylesheet" href="/static/app.css">' in html
+        assert 'class="topbar"' in html and 'class="brand"' in html
+        assert 'href="/"' in html and 'href="/tree"' in html
+
+
+def test_the_current_page_is_marked_for_assistive_tech(web):
+    assert '<a class="tab" href="/" aria-current="page">' in web[0].get("/").text
+    assert '<a class="tab" href="/tree" aria-current="page">' in web[0].get("/tree").text

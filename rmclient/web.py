@@ -363,6 +363,13 @@ async def api_upload(
     }
 
 
+@app.get("/static/app.css")
+def stylesheet() -> Response:
+    """三页共用的设计体系。no-store：改完样式刷新就见，不用跟浏览器缓存较劲。"""
+    return Response(page("app.css"), media_type="text/css",
+                    headers={"Cache-Control": "no-store"})
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     return page("push.html")

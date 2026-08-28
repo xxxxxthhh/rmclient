@@ -1,60 +1,47 @@
 <!doctype html>
 <meta charset="utf-8"><title>rmclient — 文档树</title>
+<link rel="stylesheet" href="/static/app.css">
 <style>
- body{font:15px/1.6 system-ui,sans-serif;max-width:58rem;margin:2rem auto;padding:0 1rem;color:#222}
- h1{font-size:1.3rem;margin:.2rem 0}
- nav{color:#888;margin-bottom:.5rem}
- nav a{color:#345;text-decoration:none;margin-right:.2rem}
- #toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.6rem 0 1rem}
- #search{flex:1;min-width:12rem;font:inherit;padding:.3rem .5rem;border:1px solid #ccc;border-radius:6px}
- #toolbar select,#toolbar button{font:inherit;padding:.25rem .7rem;cursor:pointer;
-   border:1px solid #ccc;border-radius:6px;background:#fafafa}
+ #toolbar{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;margin:0 0 var(--sp-4)}
+ #search{flex:1;min-width:12rem}
  .node{padding:.1rem 0}
- .kids{margin-left:1.1rem;border-left:1px solid #eee;padding-left:.6rem}
+ .kids{margin-left:1.1rem;border-left:1px solid var(--line);padding-left:.6rem}
  summary{cursor:pointer;list-style:none}
  summary::-webkit-details-marker{display:none}
- summary::before{content:"▸ ";color:#999}
+ summary::before{content:"▸ ";color:var(--ink-3)}
  details[open]>summary::before{content:"▾ "}
- .meta{color:#888;font-size:.85em;margin-left:.4rem}
- .locked{opacity:.62}
- .badge{background:#eee;color:#666;border-radius:4px;padding:0 .35rem;font-size:.75em;margin-left:.35rem}
- .hit{background:#fff3bf;border-radius:3px}
+ .hit{background:var(--warn-soft);border-radius:3px}
  .flash{animation:flash 2s ease-out}
- @keyframes flash{from{background:#ffe066}to{background:transparent}}
- .msg{padding:.7rem 1rem;border-radius:8px;margin:.6rem 0;white-space:pre-wrap}
- .err{background:#fdecea}.ok{background:#e8f5e9}.warn{background:#fff8e1}
- #trash{color:#777}
- #dups{background:#f4f4f8;border-radius:8px;padding:.8rem 1rem;margin:.6rem 0}
- #dups h2{font-size:1rem;margin:0 0 .4rem}
- #dups .group{margin:.5rem 0}
- #dups .item{font-size:.9em;color:#555;margin-left:1rem}
- #dups a{color:#345;cursor:pointer;text-decoration:underline}
- #dups button{font:inherit;font-size:.85em;padding:.15rem .6rem;cursor:pointer;
-              border:1px solid #ccc;border-radius:5px;background:#fff}
- #batchbar{background:#eef4ff;border-radius:8px;padding:.5rem .9rem;margin:.4rem 0;
-           display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
- #batchbar button{font:inherit;font-size:.9em;padding:.2rem .7rem;cursor:pointer;
-                  border:1px solid #ccc;border-radius:5px;background:#fff}
- .pick{margin-right:.35rem}
- .acts{margin-left:.5rem;visibility:hidden}
+ @keyframes flash{from{background:var(--warn-soft)}to{background:transparent}}
+ .msg{padding:var(--sp-3) var(--sp-4);border-radius:var(--radius);margin:var(--sp-2) 0;white-space:pre-wrap}
+ .err{background:var(--danger-soft)}.ok{background:var(--ok-soft)}.warn{background:var(--warn-soft)}
+ #trash{color:var(--ink-3)}
+ .acts{margin-left:var(--sp-2);visibility:hidden}
  .node:hover>.acts,.node:hover>summary>.acts{visibility:visible}
- .acts button{font:inherit;font-size:.8em;margin-left:.25rem;padding:0 .4rem;cursor:pointer;
-              border:1px solid #ccc;border-radius:4px;background:#fafafa;color:#345}
- dialog{border:none;border-radius:10px;padding:1.2rem 1.4rem;max-width:38rem;
-        box-shadow:0 8px 30px rgba(0,0,0,.2)}
- dialog h2{font-size:1.05rem;margin:.2rem 0 .8rem}
- dialog input,dialog select{font:inherit;width:100%;padding:.35rem;margin:.3rem 0 .8rem}
- dialog .buttons{display:flex;gap:.5rem;justify-content:flex-end}
- dialog button{font:inherit;padding:.3rem .9rem;cursor:pointer;border-radius:6px;border:1px solid #ccc}
- dialog button.primary{background:#345;color:#fff;border-color:#345}
- #pending{background:#fff8e1;border-radius:8px;padding:.8rem 1rem;margin:.6rem 0}
- #pending h2{font-size:1rem;margin:0 0 .4rem}
- #pending .rec{font-size:.9em;color:#555;padding:.05rem 0}
- #pending button{font:inherit;font-size:.85em;padding:.15rem .6rem;margin-right:.4rem;
-                 cursor:pointer;border:1px solid #ccc;border-radius:5px;background:#fff}
+ .acts button{font-size:.8em;margin-left:.25rem;padding:0 .4rem}
+ #batchbar{background:var(--accent-soft);border-radius:var(--radius);padding:var(--sp-2) var(--sp-3);
+           margin:var(--sp-2) 0;display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap}
+ .pick{margin-right:.35rem}
+ #pending .rec{font-size:.9em;color:var(--ink-2);padding:.05rem 0}
+ #dups .group{margin:var(--sp-2) 0}
+ #dups .item{font-size:.9em;color:var(--ink-2);margin-left:var(--sp-4)}
 </style>
-<nav><a href="/">推书</a> · <a href="/tree">文档树</a></nav>
-<h1>文档树</h1>
+<header class="topbar">
+  <a class="brand" href="/tree">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+      <rect x="4.5" y="2.5" width="15" height="19" rx="2.5"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/>
+    </svg>
+    rmclient
+  </a>
+  <nav class="tabs" aria-label="页面导航">
+    <a class="tab" href="/">推书</a>
+    <a class="tab" href="/tree" aria-current="page">文档树</a>
+  </nav>
+  <span class="crumb" id="crumb">文档树</span>
+  <span class="spacer"></span>
+</header>
+<main>
 <div id="toolbar">
   <input id="search" type="search" placeholder="搜索可见名（子串，不分大小写）">
   <label class="meta">排序</label>
@@ -68,14 +55,16 @@
   <button id="reload">刷新</button>
 </div>
 <div id="batchbar" hidden></div>
-<div id="dups" hidden></div>
-<div id="pending" hidden></div>
+<div id="dups" class="panel" hidden></div>
+<div id="pending" class="panel attention" hidden></div>
 <div id="log"></div>
 <div id="tree">读取中…</div>
 <details id="trash-wrap" hidden>
   <summary>回收站（<span id="trash-count">0</span> 项，只读）</summary>
   <div id="trash" class="kids"></div>
 </details>
+</main>
+<div id="toasts" aria-live="polite"></div>
 <input type="file" id="picker" hidden accept=".epub,.pdf,.rmdoc">
 <script>
 // ---- 小工具 ----
