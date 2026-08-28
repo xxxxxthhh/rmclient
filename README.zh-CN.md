@@ -180,3 +180,7 @@ uv run pytest        # 离线测试，全程不碰真实服务器
 
 `spike/` 下的脚本确实会写真实服务器。它们把动作限制在临时目录
 `rmclient-spike-<随机>` 里，跑完自己清理。
+
+## License
+
+MIT 许可证——见 [LICENSE](LICENSE)。

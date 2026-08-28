@@ -200,3 +200,7 @@ without credentials.
 
 The scripts under `spike/` do write to a real server. They confine themselves to
 a temporary `rmclient-spike-<random>` folder and clean up after themselves.
+
+## License
+
+MIT licensed — see [LICENSE](LICENSE).
