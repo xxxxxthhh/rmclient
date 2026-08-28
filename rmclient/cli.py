@@ -1,4 +1,4 @@
-"""命令行：推书。
+"""命令行：推书。输出一律英文（公开项目的默认脸面），退出码不变。
 
     rmclient push book.epub                  # 传到根级
     rmclient push book.epub --to Books/CS    # 按树上的可见名路径指定目录
@@ -40,7 +40,7 @@ def resolve_target(entries: list, path: str | None) -> str:
 def cmd_push(args) -> int:
     path = Path(args.file)
     if not path.is_file():
-        print(f"没有这个文件：{path}", file=sys.stderr)
+        print(f"no such file: {path}", file=sys.stderr)
         return 2
     data = path.read_bytes()
 
@@ -49,9 +49,9 @@ def cmd_push(args) -> int:
         try:
             parent_id = resolve_target(client.list_tree().entries, args.to)
         except PathError as exc:
-            print(f"--to 解析失败：{exc}", file=sys.stderr)
+            print(f"--to did not resolve: {exc}", file=sys.stderr)
             if exc.candidates:
-                print(f"  该层可选目录：{', '.join(exc.candidates)}", file=sys.stderr)
+                print(f"  folders at that level: {', '.join(exc.candidates)}", file=sys.stderr)
             return 2
         except PermissionError as exc:
             print(f"{exc}", file=sys.stderr)
@@ -60,28 +60,32 @@ def cmd_push(args) -> int:
         try:
             node, existing = push(client, data, path.name, parent_id=parent_id, force=args.force)
         except ValidationError as exc:
-            print(f"拒绝上传：{exc}", file=sys.stderr)
+            print(f"refusing to upload: {exc}", file=sys.stderr)
             return 2
         except DuplicateName as exc:
-            print(f"目标目录里已经有 {exc.name!r}（{len(exc.existing)} 份）。", file=sys.stderr)
-            print("服务端不覆盖也不去重：再传一次会多出一份独立副本，设备端两本同名无法区分"
-                  "（REPORT §10）。确实要传就加 --force。", file=sys.stderr)
+            print(f"the target folder already holds {exc.name!r} "
+                  f"({len(exc.existing)} of them).", file=sys.stderr)
+            print("The server neither overwrites nor de-duplicates: pushing again adds an "
+                  "independent second copy, and the device cannot tell two same-named books "
+                  "apart (REPORT §10). Pass --force to do it anyway.", file=sys.stderr)
             for doc in exc.existing:
-                print(f"  已有：{doc.id}  {doc.name}  {doc.size / 1024:.0f}KB", file=sys.stderr)
+                print(f"  already there: {doc.id}  {doc.name}  {doc.size / 1024:.0f}KB",
+                      file=sys.stderr)
             return 3
         except PermissionError as exc:
             print(f"{exc}", file=sys.stderr)
             return 2
         except RmApiError as exc:
-            print(f"上传失败：HTTP {exc.status} {exc.error or exc.body}", file=sys.stderr)
+            print(f"upload failed: HTTP {exc.status} {exc.error or exc.body}", file=sys.stderr)
             return 1
 
-    where = args.to or "（根级）"
-    print(f"✓ 已上传 {visible_name(path.name)!r} → {where}")
+    where = args.to or "(root)"
+    print(f"✓ uploaded {visible_name(path.name)!r} → {where}")
     print(f"  UUID {node.id}")
     if existing:
-        print(f"  ⚠ 同名的还有 {len(existing)} 份，设备端会看到 {len(existing) + 1} 本同名书")
-    print("  设备端需要同步一次才会出现")
+        print(f"  ⚠ {len(existing)} more of that name already exist; "
+              f"the device will show {len(existing) + 1} identically named books")
+    print("  the device has to sync once before it shows up")
     return 0
 
 
@@ -92,22 +96,27 @@ def cmd_serve(args) -> int:
 
     # 先把配置读通再起服务：不然错要等到第一个请求才以 500 的形式冒出来。
     load_credentials()
-    print(f"rmclient → {base_url()}  （锁定目录：{', '.join(locked_folders()) or '无'}）")
+    print(f"rmclient → {base_url()}  "
+          f"(locked folders: {', '.join(locked_folders()) or 'none'})")
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="rmclient", description="reMarkable 自建云内容管理")
+    parser = argparse.ArgumentParser(
+        prog="rmclient", description="Content manager for your self-hosted reMarkable cloud"
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p = sub.add_parser("push", help="上传一本书（.epub/.pdf/.rmdoc）")
+    p = sub.add_parser("push", help="upload one book (.epub/.pdf/.rmdoc)")
     p.add_argument("file")
-    p.add_argument("--to", help="目标目录的可见名路径，如 'Books/CS'；不给就传到根级")
-    p.add_argument("--force", action="store_true", help="重名也照传（会多出一份独立副本）")
+    p.add_argument("--to", help="target folder as a visible-name path, e.g. 'Books/CS'; "
+                                "omit for the root")
+    p.add_argument("--force", action="store_true",
+                   help="upload even if the name exists (adds an independent second copy)")
     p.set_defaults(func=cmd_push)
 
-    p = sub.add_parser("serve", help="起本地 Web（拖拽上传）")
+    p = sub.add_parser("serve", help="start the local web UI")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
     p.set_defaults(func=cmd_serve)
@@ -117,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)
     except ConfigError as exc:
         # 配置问题给一句人话，不甩 traceback。
-        print(f"配置有问题：{exc}", file=sys.stderr)
+        print(f"bad configuration: {exc}", file=sys.stderr)
         return 2
 
 
