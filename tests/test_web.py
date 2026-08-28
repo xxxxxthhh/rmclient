@@ -507,7 +507,8 @@ def test_batch_move_marks_a_bad_item_without_failing_the_batch(live_web):
 def test_tree_page_has_the_batch_bar_and_no_checkbox_for_locked_rows(web):
     html = web[0].get("/tree").text
     assert 'id="batchbar"' in html and "askMoveMany" in html and "askDelete([...SELECTED]" in html
-    assert "if (node.locked || !allowed) return null;" in html  # 信箱/回收站没有勾选框
+    # 信箱/回收站不给勾选框，只给等宽占位保持对齐
+    assert "if (node.locked || !allowed) return el('span', 'pick-gap');" in html
 
 
 # ---- 原件下载（只读）----------------------------------------------
@@ -679,3 +680,14 @@ def test_preview_export_button_lives_in_the_topbar(preview_web):
     text = preview_web[0].get("/preview/b1").text
     head = text[: text.index("</header>")]
     assert 'id="pdf"' in head and "导出 PDF" in head
+
+
+def test_hidden_beats_component_display(web):
+    # .batchdock{display:flex} 会压过 [hidden]，空的悬浮条会露出来——真机上撞到过。
+    assert "[hidden] { display: none !important; }" in web[0].get("/static/app.css").text
+
+
+def test_row_actions_overlay_so_the_meta_column_stays_flush_right(web):
+    html = web[0].get("/tree").text
+    assert ".acts{position:absolute" in html
+    assert ".row .caret-gap{" in html and ".row .pick-gap{" in html  # 图标列对齐

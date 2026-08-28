@@ -7,11 +7,14 @@
           background:color-mix(in srgb, var(--paper) 92%, transparent);backdrop-filter:blur(6px)}
  #search{flex:1;min-width:12rem}
 
- .row{display:flex;align-items:center;gap:.4rem;padding:.12rem .4rem;border-radius:var(--radius-sm)}
+ .row{position:relative;display:flex;align-items:center;gap:.4rem;padding:.12rem .4rem;
+      border-radius:var(--radius-sm)}
  .row:hover{background:var(--surface-2)}
  .row .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  .row .tail{margin-left:auto;display:flex;align-items:center;gap:var(--sp-2);flex:none}
  .row .ico{color:var(--ink-3);flex:none;display:flex}
+ .row .caret-gap{width:15px;flex:none}
+ .row .pick-gap{width:13px;flex:none}
  details[open]>summary>.row>.ico{color:var(--accent)}
  .locked .row .ico{color:var(--warn)}
 
@@ -25,8 +28,10 @@
  .flash{animation:flash 2s ease-out}
  @keyframes flash{from{background:var(--warn-soft)}to{background:transparent}}
 
- .acts{display:flex;gap:.2rem;visibility:hidden;flex:none}
- .row:hover .acts,.row:focus-within .acts{visibility:visible}
+ .acts{position:absolute;right:.35rem;top:50%;transform:translateY(-50%);display:none;
+       gap:.2rem;padding-left:.5rem;border-radius:var(--radius-sm);
+       background:linear-gradient(90deg,transparent,var(--surface-2) 12%)}
+ .row:hover .acts,.row:focus-within .acts{display:flex}
  .acts button{font-size:.78em;padding:.05rem .4rem}
  .pick{margin:0 .1rem 0 0;accent-color:var(--accent)}
 
@@ -42,6 +47,8 @@
  #dups .item{font-size:.92em;color:var(--ink-2);margin-left:var(--sp-4);display:flex;
              align-items:center;gap:var(--sp-2)}
  #trash-wrap{margin-top:var(--sp-5);color:var(--ink-3)}
+ #trash-wrap>summary::before{content:"▸ ";color:var(--ink-3)}
+ #trash-wrap[open]>summary::before{content:"▾ "}
  .skel-row{height:1.4rem;margin:.35rem 0}
 </style>
 <header class="topbar">
@@ -200,8 +207,8 @@ function actions(node, allowed) {
 }
 
 function checkbox(node, allowed) {
-  // 信箱子树和回收站不给勾选框——批量操作根本够不到它们。
-  if (node.locked || !allowed) return null;
+  // 信箱子树和回收站不给勾选框——批量操作根本够不到它们。给个等宽占位保持对齐。
+  if (node.locked || !allowed) return el('span', 'pick-gap');
   const box = el('input', 'pick');
   box.type = 'checkbox';
   box.checked = SELECTED.has(node.id);
@@ -227,6 +234,7 @@ function renderDoc(node, allowed) {
   const wrap = el('div', 'node' + (node.locked ? ' locked' : ''));
   wrap.dataset.id = node.id;
   const row = el('div', 'row');
+  row.append(el('span', 'caret-gap'));   // 和目录的折叠箭头对齐
   const pick = checkbox(node, allowed);
   if (pick) row.append(pick);
   row.append(el('span', 'ico'));
