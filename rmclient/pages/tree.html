@@ -1,10 +1,14 @@
 <!doctype html>
 <meta charset="utf-8"><title>rmclient — 文档树</title>
 <style>
- body{font:15px/1.6 system-ui,sans-serif;max-width:52rem;margin:3rem auto;padding:0 1rem;color:#222}
- h1{font-size:1.3rem}
+ body{font:15px/1.6 system-ui,sans-serif;max-width:58rem;margin:2rem auto;padding:0 1rem;color:#222}
+ h1{font-size:1.3rem;margin:.2rem 0}
  nav{color:#888;margin-bottom:.5rem}
  nav a{color:#345;text-decoration:none;margin-right:.2rem}
+ #toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.6rem 0 1rem}
+ #search{flex:1;min-width:12rem;font:inherit;padding:.3rem .5rem;border:1px solid #ccc;border-radius:6px}
+ #toolbar select,#toolbar button{font:inherit;padding:.25rem .7rem;cursor:pointer;
+   border:1px solid #ccc;border-radius:6px;background:#fafafa}
  .node{padding:.1rem 0}
  .kids{margin-left:1.1rem;border-left:1px solid #eee;padding-left:.6rem}
  summary{cursor:pointer;list-style:none}
@@ -14,34 +18,42 @@
  .meta{color:#888;font-size:.85em;margin-left:.4rem}
  .locked{opacity:.62}
  .badge{background:#eee;color:#666;border-radius:4px;padding:0 .35rem;font-size:.75em;margin-left:.35rem}
+ .hit{background:#fff3bf;border-radius:3px}
+ .flash{animation:flash 2s ease-out}
+ @keyframes flash{from{background:#ffe066}to{background:transparent}}
  .msg{padding:.7rem 1rem;border-radius:8px;margin:.6rem 0;white-space:pre-wrap}
- .err{background:#fdecea}
+ .err{background:#fdecea}.ok{background:#e8f5e9}.warn{background:#fff8e1}
  #trash{color:#777}
- #pending{background:#fff8e1;border-radius:8px;padding:.8rem 1rem;margin:.6rem 0}
- #pending h2{font-size:1rem;margin:0 0 .4rem}
- #pending .rec{font-size:.9em;color:#555;padding:.05rem 0}
- #pending button{font:inherit;font-size:.85em;padding:.15rem .6rem;margin-right:.4rem;
-                 cursor:pointer;border:1px solid #ccc;border-radius:5px;background:#fff}
- .ok{background:#e8f5e9}
  .acts{margin-left:.5rem;visibility:hidden}
  .node:hover>.acts,.node:hover>summary>.acts{visibility:visible}
  .acts button{font:inherit;font-size:.8em;margin-left:.25rem;padding:0 .4rem;cursor:pointer;
               border:1px solid #ccc;border-radius:4px;background:#fafafa;color:#345}
- dialog{border:none;border-radius:10px;padding:1.2rem 1.4rem;max-width:34rem;
+ dialog{border:none;border-radius:10px;padding:1.2rem 1.4rem;max-width:38rem;
         box-shadow:0 8px 30px rgba(0,0,0,.2)}
  dialog h2{font-size:1.05rem;margin:.2rem 0 .8rem}
  dialog input,dialog select{font:inherit;width:100%;padding:.35rem;margin:.3rem 0 .8rem}
  dialog .buttons{display:flex;gap:.5rem;justify-content:flex-end}
  dialog button{font:inherit;padding:.3rem .9rem;cursor:pointer;border-radius:6px;border:1px solid #ccc}
  dialog button.primary{background:#345;color:#fff;border-color:#345}
- #toolbar{margin:.4rem 0 1rem}
- #toolbar button{font:inherit;padding:.25rem .7rem;cursor:pointer;border:1px solid #ccc;
-                 border-radius:6px;background:#fafafa}
+ #pending{background:#fff8e1;border-radius:8px;padding:.8rem 1rem;margin:.6rem 0}
+ #pending h2{font-size:1rem;margin:0 0 .4rem}
+ #pending .rec{font-size:.9em;color:#555;padding:.05rem 0}
+ #pending button{font:inherit;font-size:.85em;padding:.15rem .6rem;margin-right:.4rem;
+                 cursor:pointer;border:1px solid #ccc;border-radius:5px;background:#fff}
 </style>
 <nav><a href="/">推书</a> · <a href="/tree">文档树</a></nav>
 <h1>文档树</h1>
-<div id="toolbar"><button id="mkroot">＋ 新建根级目录</button>
-  <button id="reload">刷新</button></div>
+<div id="toolbar">
+  <input id="search" type="search" placeholder="搜索可见名（子串，不分大小写）">
+  <label class="meta">排序</label>
+  <select id="sort">
+    <option value="name">名字</option>
+    <option value="modified">修改时间</option>
+    <option value="size">大小</option>
+  </select>
+  <button id="mkroot">＋ 新建根级目录</button>
+  <button id="reload">刷新</button>
+</div>
 <div id="pending" hidden></div>
 <div id="log"></div>
 <div id="tree">读取中…</div>
@@ -49,7 +61,10 @@
   <summary>回收站（<span id="trash-count">0</span> 项，只读）</summary>
   <div id="trash" class="kids"></div>
 </details>
+<input type="file" id="picker" hidden accept=".epub,.pdf,.rmdoc">
 <script>
+// ---- 小工具 ----
+
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -57,26 +72,80 @@ const el = (tag, cls, text) => {
   return n;
 };
 const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.round(n / 1024) + 'KB';
-const say = (cls, text) => document.getElementById('log').append(el('div', 'msg ' + cls, text));
+const say = (cls, text) => document.getElementById('log').prepend(el('div', 'msg ' + cls, text));
+
+// ---- 状态 ----
+
+let TREE = {entries: [], trash: []};
+let INDEX = new Map();       // id -> {node, ancestors: [id...]}
+const OPEN = new Set();      // 用户自己展开的目录（过滤时的自动展开不写进来）
+let FILTER = '';
+let SORT = 'name';
+
+function reindex() {
+  INDEX = new Map();
+  const walk = (nodes, ancestors) => {
+    for (const n of nodes) {
+      INDEX.set(n.id, {node: n, ancestors});
+      if (n.kind === 'folder') walk(n.children, [...ancestors, n.id]);
+    }
+  };
+  walk(TREE.entries, []);
+}
+
+// ---- 过滤与排序 ----
+
+function matches(node) {
+  return !FILTER || node.name.toLowerCase().includes(FILTER);
+}
+
+function subtreeMatches(node) {
+  if (matches(node)) return true;
+  return node.kind === 'folder' && node.children.some(subtreeMatches);
+}
+
+function sorted(nodes) {
+  const key = {
+    name: (a, b) => a.name.localeCompare(b.name),
+    modified: (a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''),
+    size: (a, b) => (b.size || 0) - (a.size || 0),
+  }[SORT];
+  // 目录永远在前，和排序方式无关。
+  return [...nodes].sort((a, b) => (a.kind === b.kind) ? key(a, b) : (a.kind === 'folder' ? -1 : 1));
+}
+
+// ---- 渲染 ----
 
 function actions(node, allowed) {
   const box = el('span', 'acts');
-  const add = (label, fn) => { const b = el('button', null, label); b.onclick = e => { e.preventDefault(); fn(); }; box.append(b); };
-  // 预览是只读导出，信箱里的笔记也给（锁只针对写操作）；回收站不给。
-  if (node.kind === 'doc' && allowed) add('预览', () => { location.href = '/preview/' + node.id; });
-  // 写操作：信箱子树一个按钮都不给（服务端也会再拒一次，前端过滤只是展示）。
+  const add = (label, fn) => {
+    const b = el('button', null, label);
+    b.onclick = e => { e.preventDefault(); e.stopPropagation(); fn(); };
+    box.append(b);
+  };
+  // 只读操作：信箱里的文档也给（锁只针对写操作）；回收站不给。
+  if (node.kind === 'doc' && allowed) {
+    add('预览', () => { location.href = '/preview/' + node.id; });
+    add('下载', () => { location.href = '/api/download/' + node.id; });
+  }
   if (node.locked || !allowed) return box;
-  if (node.kind === 'folder') add('＋目录', () => askNewFolder(node.id, node.name));
+  if (node.kind === 'folder') {
+    add('＋目录', () => askNewFolder(node.id, node.name));
+    add('传到这里', () => pickAndUpload(node.id, node.name));
+  }
   add('重命名', () => askRename(node));
   add('移动', () => askMove(node));
-  add('删除', () => askDelete(node));
+  add('删除', () => askDelete([node.id], node.name));
   return box;
 }
 
 function renderDoc(node, allowed) {
   const row = el('div', 'node' + (node.locked ? ' locked' : ''));
-  row.append(el('span', null, '· ' + node.name));
-  row.append(el('span', 'meta', `[${node.type || '?'}, ${kb(node.size)}, ${(node.lastModified || '').slice(0, 10)}]`));
+  row.dataset.id = node.id;
+  const label = el('span', matches(node) && FILTER ? 'hit' : null, '· ' + node.name);
+  row.append(label);
+  row.append(el('span', 'meta',
+    `[${node.type || '?'}, ${kb(node.size)}, ${(node.lastModified || '').slice(0, 10)}]`));
   if (node.locked) row.append(el('span', 'badge', '🔒 只读'));
   row.append(actions(node, allowed));
   return row;
@@ -84,7 +153,12 @@ function renderDoc(node, allowed) {
 
 function renderFolder(node, allowed) {
   const box = el('details', 'node' + (node.locked ? ' locked' : ''));
-  const head = el('summary', null, '📁 ' + node.name);
+  box.dataset.id = node.id;
+  box.open = FILTER ? subtreeMatches(node) : OPEN.has(node.id);
+  box.ontoggle = () => { if (!FILTER) box.open ? OPEN.add(node.id) : OPEN.delete(node.id); };
+  const head = el('summary');
+  head.append(el('span', matches(node) && FILTER ? 'hit' : null, '📁 ' + node.name));
+  head.append(el('span', 'meta', `(${node.children.length})`));
   if (node.locked) head.append(el('span', 'badge', '🔒 只读'));
   head.append(actions(node, allowed));
   box.append(head);
@@ -96,15 +170,30 @@ function renderFolder(node, allowed) {
 
 function renderInto(container, nodes, allowed = true) {
   container.textContent = '';
-  const sorted = [...nodes].sort((a, b) =>
-    (a.kind === b.kind) ? a.name.localeCompare(b.name) : (a.kind === 'folder' ? -1 : 1));
-  for (const node of sorted) {
+  const shown = sorted(nodes).filter(subtreeMatches);
+  for (const node of shown) {
     container.append(node.kind === 'folder' ? renderFolder(node, allowed) : renderDoc(node, allowed));
   }
-  if (!nodes.length) container.append(el('div', 'meta', '（空）'));
+  if (!shown.length) container.append(el('div', 'meta', FILTER ? '（无匹配）' : '（空）'));
 }
 
-// ---- 对话框与操作 ----
+function draw() {
+  renderInto(document.getElementById('tree'), TREE.entries);
+  const wrap = document.getElementById('trash-wrap');
+  wrap.hidden = !TREE.trash.length;
+  document.getElementById('trash-count').textContent = TREE.trash.length;
+  renderInto(document.getElementById('trash'), TREE.trash, false);  // 回收站只读
+}
+
+async function load() {
+  const r = await fetch('/api/tree');
+  if (!r.ok) { say('err', '读不到文档树，看下终端里的报错'); return; }
+  TREE = await r.json();
+  reindex();
+  draw();
+}
+
+// ---- 对话框 ----
 
 function dialog(title, buildBody, confirmLabel, onConfirm) {
   const dlg = el('dialog');
@@ -126,13 +215,13 @@ function dialog(title, buildBody, confirmLabel, onConfirm) {
 
 async function call(url, fields, okText) {
   const body = new FormData();
-  for (const [k, v] of Object.entries(fields)) body.append(k, v);
+  for (const [k, v] of Object.entries(fields)) {
+    if (Array.isArray(v)) v.forEach(i => body.append(k, i));
+    else body.append(k, v);
+  }
   const r = await fetch(url, {method: 'POST', body});
   const d = await r.json().catch(() => ({}));
-  if (r.ok) { say('ok', okText(d)); await document.getElementById('mkroot').onclick = () => askNewFolder('', '根级');
-document.getElementById('reload').onclick = () => { loadPending(); load(); };
-loadPending();
-load(); return d; }
+  if (r.ok) { say('ok', okText(d)); await load(); return d; }
   say('err', (d.detail && d.detail.message) || `失败：HTTP ${r.status}`);
   return null;
 }
@@ -155,6 +244,12 @@ function askRename(node) {
   });
 }
 
+function collectIds(node, into = new Set()) {
+  into.add(node.id);
+  for (const c of node.children || []) collectIds(c, into);
+  return into;
+}
+
 function folderOptions(exclude) {
   // 排除信箱子树、以及自己和自己的子孙（移进去会把整棵子树甩飞）。
   const out = [{id: '', path: '（根级）'}];
@@ -170,12 +265,6 @@ function folderOptions(exclude) {
   return out;
 }
 
-function collectIds(node, into = new Set()) {
-  into.add(node.id);
-  for (const c of node.children || []) collectIds(c, into);
-  return into;
-}
-
 function askMove(node) {
   dialog(`移动「${node.name}」`, dlg => {
     const sel = el('select');
@@ -189,13 +278,57 @@ function askMove(node) {
   });
 }
 
-async function askDelete(node) {
-  const body = new FormData(); body.append('id', node.id);
+// ---- 上传到指定目录（复用 / 页那套 /api/upload）----
+
+let uploadTarget = null;
+
+function pickAndUpload(parentId, parentName) {
+  uploadTarget = {id: parentId, name: parentName};
+  document.getElementById('picker').click();
+}
+
+document.getElementById('picker').onchange = async ev => {
+  const files = [...ev.target.files];
+  ev.target.value = '';
+  for (const file of files) await uploadOne(file, false);
+};
+
+async function uploadOne(file, force) {
+  const body = new FormData();
+  body.append('file', file);
+  body.append('parent', uploadTarget.id);
+  body.append('force', force ? 'true' : 'false');
+  const r = await fetch('/api/upload', {method: 'POST', body});
+  const d = await r.json().catch(() => ({}));
+  if (r.ok) {
+    say('ok', `✓ 已上传「${d.name}」→ ${uploadTarget.name}` +
+      (d.duplicates ? `\n⚠ 同名的还有 ${d.duplicates} 份，设备端会看到 ${d.duplicates + 1} 本同名书` : '') +
+      '\n设备端需要同步一次才会出现');
+    await load();
+    return;
+  }
+  const detail = d.detail || {};
+  if (detail.reason === 'duplicate') {
+    dialog(`「${uploadTarget.name}」里已经有同名的书`, dlg => {
+      dlg.append(el('div', 'msg warn',
+        '服务端不覆盖也不去重：再传会多出一份独立副本，设备端两本无法区分。'));
+      for (const e of detail.existing || []) dlg.append(el('div', 'meta', `已有：${e.id}`));
+    }, '仍然上传', async () => { await uploadOne(file, true); });
+    return;
+  }
+  say('err', detail.message || `上传失败：HTTP ${r.status}`);
+}
+
+// ---- 删除 ----
+
+async function askDelete(roots, label) {
+  const body = new FormData();
+  for (const id of roots) body.append('roots', id);
   const r = await fetch('/api/delete/plan', {method: 'POST', body});
   const plan = await r.json().catch(() => ({}));
   if (!r.ok) { say('err', (plan.detail && plan.detail.message) || `失败：HTTP ${r.status}`); return; }
 
-  dialog(`删除「${node.name}」`, dlg => {
+  dialog(`删除${label}`, dlg => {
     dlg.append(el('div', 'msg err',
       '删除是硬删：不进回收站，不可撤销，并且会同步删掉设备上的文件。\n' +
       '设备端如果对这些文档有本地变更，下次同步可能把它们原 UUID 推回来（复活）。'));
@@ -210,7 +343,7 @@ async function askDelete(node) {
     dlg.append(list);
   }, '确认删除', async () => {
     const form = new FormData();
-    form.append('id', node.id);
+    for (const id of roots) form.append('roots', id);
     for (const i of plan.ids) form.append('ids', i);
     const res = await fetch('/api/delete', {method: 'POST', body: form});
     const d = await res.json().catch(() => ({}));
@@ -222,17 +355,13 @@ async function askDelete(node) {
       await load();
       return;
     }
-    reportDeleted(node.name, d);
+    say(d.residue.length ? 'err' : 'ok', d.residue.length
+      ? `已删 ${d.deleted.length} 项，但复查发现 ${d.residue.length} 项还在树上：${d.residue.join(', ')}`
+      : `✓ 已删除 ${d.deleted.length} 项，删完立刻复查未见残留。\n` +
+        '复活要等设备同步一轮才看得出来——记录已存到本地，过几分钟用上面的「复活复查」再查一次。');
     await loadPending();
     await load();
   });
-}
-
-function reportDeleted(name, result) {
-  say(result.residue.length ? 'err' : 'ok', result.residue.length
-    ? `已删 ${result.deleted.length} 项，但复查发现 ${result.residue.length} 项还在树上：${result.residue.join(', ')}`
-    : `✓ 已删除「${name}」共 ${result.deleted.length} 项，删完立刻复查未见残留。\n` +
-      '复活要等设备同步一轮才看得出来——记录已存到本地，过几分钟用上面的「复活复查」再查一次。');
 }
 
 // ---- 待复查的删除记录（存在本地文件里，刷新页面也还在）----
@@ -286,20 +415,13 @@ async function clearRecords(ids) {
   await loadPending();
 }
 
-let TREE = {entries: [], trash: []};
+// ---- 绑定 ----
 
-async function load() {
-  const r = await fetch('/api/tree');
-  if (!r.ok) { say('err', '读不到文档树，看下终端里的报错'); return; }
-  const data = await r.json();
-  TREE = data;
-  renderInto(document.getElementById('tree'), data.entries);
-  const wrap = document.getElementById('trash-wrap');
-  wrap.hidden = !data.trash.length;
-  document.getElementById('trash-count').textContent = data.trash.length;
-  renderInto(document.getElementById('trash'), data.trash, false);  // 回收站只读
-}
-
+document.getElementById('search').oninput = ev => {
+  FILTER = ev.target.value.trim().toLowerCase();
+  draw();
+};
+document.getElementById('sort').onchange = ev => { SORT = ev.target.value; draw(); };
 document.getElementById('mkroot').onclick = () => askNewFolder('', '根级');
 document.getElementById('reload').onclick = () => { loadPending(); load(); };
 loadPending();

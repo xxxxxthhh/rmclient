@@ -8,9 +8,10 @@ from rmclient.manage import (
     check_name,
     check_resurrection,
     create_folder,
-    delete_subtree,
+    delete_subtrees,
     move,
     plan_delete,
+    plan_delete_many,
     rename,
 )
 from tests.fixtures import logged_in, stateful_handler
@@ -134,7 +135,7 @@ def test_move_into_own_subtree_sends_nothing():
 def test_delete_subtree_deletes_deepest_first_and_rechecks():
     client, seen = logged_in(stateful_handler())
     plan = plan_delete(client.list_tree(), "books")
-    result = delete_subtree(client, "books", [i["id"] for i in plan])
+    result = delete_subtrees(client, ["books"], [i["id"] for i in plan])
     assert result["deleted"][-1] == "books"
     assert result["residue"] == []
     assert [n.id for n in client.list_tree().entries] == ["mb", "loose"]
@@ -144,7 +145,7 @@ def test_delete_subtree_reports_residue_when_the_delete_did_not_stick():
     # 默认假云的 DELETE 是个空操作——正好用来证明复查真的在查。
     client, _ = logged_in()
     plan = plan_delete(client.list_tree(), "books")
-    result = delete_subtree(client, "books", [i["id"] for i in plan])
+    result = delete_subtrees(client, ["books"], [i["id"] for i in plan])
     assert sorted(result["residue"]) == ["b1", "books", "cs"]
 
 
@@ -152,7 +153,7 @@ def test_delete_subtree_refuses_when_the_tree_changed_since_the_plan():
     # 计划与确认之间设备同步塞了个新文件进来——必须重新看一遍再确认。
     client, seen = logged_in(stateful_handler())
     with pytest.raises(TreeChanged) as exc:
-        delete_subtree(client, "books", ["books", "b1"])  # 少了 cs
+        delete_subtrees(client, ["books"], ["books", "b1"])  # 少了 cs
     assert exc.value.added == ["cs"]
     assert "DELETE" not in [r.method for r in seen]
 
@@ -163,3 +164,39 @@ def test_check_resurrection_reports_ids_that_are_back():
     assert [b["id"] for b in back] == ["b1"]
     assert back[0]["path"] == "Books"
     assert check_resurrection(client, ["ghost"]) == []
+
+
+# ---- 批量删除计划：合并与去重 --------------------------------------
+
+
+def test_plan_delete_many_merges_and_dedupes_parent_plus_child():
+    # 选了父又选了子，只算一棵——否则确认清单和白名单会对不上，每次都 409。
+    client, _ = logged_in()
+    plan = plan_delete_many(tree_of(client), ["books", "b1"])
+    assert [i["id"] for i in plan].count("b1") == 1
+    assert {i["id"] for i in plan} == {"books", "b1", "cs"}
+    assert plan[-1]["id"] == "books"
+
+
+def test_plan_delete_many_orders_across_roots_by_full_tree_depth():
+    # 两棵深度不同的树：深的先删，各自的父仍排在自己的孩子后面。
+    client, _ = logged_in()
+    plan = plan_delete_many(tree_of(client), ["loose", "books"])
+    order = [i["id"] for i in plan]
+    assert order.index("b1") < order.index("books")
+    assert order.index("cs") < order.index("books")
+    assert set(order) == {"loose", "books", "b1", "cs"}
+
+
+def test_plan_delete_many_refuses_if_any_root_is_in_the_mailbox():
+    client, _ = logged_in()
+    with pytest.raises(PermissionError, match="Mailbox"):
+        plan_delete_many(tree_of(client), ["b1", "mb-doc"])
+
+
+def test_delete_subtrees_accepts_a_parent_plus_child_selection():
+    client, seen = logged_in(stateful_handler())
+    plan = plan_delete_many(client.list_tree(), ["books", "b1"])
+    result = delete_subtrees(client, ["books", "b1"], [i["id"] for i in plan])
+    assert result["residue"] == [] and result["deleted"][-1] == "books"
+    assert [n.id for n in client.list_tree().entries] == ["mb", "loose"]

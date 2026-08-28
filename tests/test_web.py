@@ -248,7 +248,7 @@ def test_move_refuses_an_unknown_id(web):
 
 
 def test_delete_plan_lists_the_whole_subtree_deepest_first(web):
-    r = web[0].post("/api/delete/plan", data={"id": "books"})
+    r = web[0].post("/api/delete/plan", data={"roots": "books"})
     assert r.status_code == 200
     plan = r.json()
     assert set(plan["ids"]) == {"books", "b1", "cs"}
@@ -258,15 +258,15 @@ def test_delete_plan_lists_the_whole_subtree_deepest_first(web):
 
 def test_delete_plan_refuses_the_mailbox(web):
     client, seen = web
-    r = client.post("/api/delete/plan", data={"id": "mb"})
+    r = client.post("/api/delete/plan", data={"roots": "mb"})
     assert r.status_code == 403 and r.json()["detail"]["reason"] == "mailbox"
     assert [x.method for x in seen] == ["GET"]
 
 
 def test_delete_removes_the_subtree_and_rechecks(live_web):
     client, seen, api = live_web
-    plan = client.post("/api/delete/plan", data={"id": "books"}).json()
-    r = client.post("/api/delete", data={"id": "books", "ids": plan["ids"]})
+    plan = client.post("/api/delete/plan", data={"roots": "books"}).json()
+    r = client.post("/api/delete", data={"roots": "books", "ids": plan["ids"]})
     assert r.status_code == 200
     body = r.json()
     assert body["deleted"][-1] == "books" and body["residue"] == []
@@ -279,15 +279,15 @@ def test_delete_removes_the_subtree_and_rechecks(live_web):
 def test_delete_reports_residue_when_the_delete_did_not_stick(web):
     # 默认假云的 DELETE 是空操作 —— 用来证明删完那次复查真的在查。
     client, _ = web
-    plan = client.post("/api/delete/plan", data={"id": "books"}).json()
-    body = client.post("/api/delete", data={"id": "books", "ids": plan["ids"]}).json()
+    plan = client.post("/api/delete/plan", data={"roots": "books"}).json()
+    body = client.post("/api/delete", data={"roots": "books", "ids": plan["ids"]}).json()
     assert sorted(body["residue"]) == ["b1", "books", "cs"]
 
 
 def test_delete_refuses_when_the_confirmed_list_no_longer_matches(web):
     # 计划与确认之间设备同步塞了个新文件进来：让用户重看一遍，别闷头删。
     client, seen = web
-    r = client.post("/api/delete", data={"id": "books", "ids": ["books", "b1"]})
+    r = client.post("/api/delete", data={"roots": "books", "ids": ["books", "b1"]})
     assert r.status_code == 409
     detail = r.json()["detail"]
     assert detail["reason"] == "tree_changed" and detail["added"] == ["cs"]
@@ -296,7 +296,7 @@ def test_delete_refuses_when_the_confirmed_list_no_longer_matches(web):
 
 def test_delete_refuses_the_mailbox_subtree(web):
     client, seen = web
-    r = client.post("/api/delete", data={"id": "mb", "ids": ["mb", "mb-doc"]})
+    r = client.post("/api/delete", data={"roots": "mb", "ids": ["mb", "mb-doc"]})
     assert r.status_code == 403
     assert "DELETE" not in [x.method for x in seen]
 
@@ -306,8 +306,8 @@ def test_delete_refuses_the_mailbox_subtree(web):
 
 def test_delete_writes_a_record_per_item(live_web, journal):
     client, _, _ = live_web
-    plan = client.post("/api/delete/plan", data={"id": "books"}).json()
-    client.post("/api/delete", data={"id": "books", "ids": plan["ids"]})
+    plan = client.post("/api/delete/plan", data={"roots": "books"}).json()
+    client.post("/api/delete", data={"roots": "books", "ids": plan["ids"]})
     records = journal.load()
     assert {(r["id"], r["name"], r["path"]) for r in records} == {
         ("books", "Books", ""),
@@ -319,7 +319,7 @@ def test_delete_writes_a_record_per_item(live_web, journal):
 
 def test_delete_records_nothing_when_it_was_refused(web, journal):
     client, _ = web
-    client.post("/api/delete", data={"id": "mb", "ids": ["mb", "mb-doc"]})
+    client.post("/api/delete", data={"roots": "mb", "ids": ["mb", "mb-doc"]})
     client.post("/api/delete", data={"id": "books", "ids": ["books"]})  # 清单对不上 → 409
     assert journal.load() == []
 
@@ -343,8 +343,8 @@ def test_resurrection_checks_the_ids_in_the_file(web, journal):
 
 def test_resurrection_is_quiet_when_nothing_came_back(live_web, journal):
     client, _, _ = live_web
-    plan = client.post("/api/delete/plan", data={"id": "books"}).json()
-    client.post("/api/delete", data={"id": "books", "ids": plan["ids"]})
+    plan = client.post("/api/delete/plan", data={"roots": "books"}).json()
+    client.post("/api/delete", data={"roots": "books", "ids": plan["ids"]})
     body = client.post("/api/resurrection").json()
     assert (body["checked"], body["back"]) == (3, [])
 
@@ -451,3 +451,27 @@ def test_preview_page_is_served_and_the_tree_links_to_it(preview_web):
     client, _, _ = preview_web
     assert "笔记预览" in client.get("/preview/b1").text
     assert "'/preview/' + node.id" in client.get("/tree").text
+
+
+def test_delete_plan_accepts_several_roots(web):
+    plan = web[0].post("/api/delete/plan", data={"roots": ["books", "loose"]}).json()
+    ids = plan["ids"]
+    assert set(ids) == {"books", "b1", "cs", "loose"}
+    # 各棵树互不相干，只要求父在自己孩子之后（loose 是根级散文档，位置无所谓）
+    assert ids.index("b1") < ids.index("books") and ids.index("cs") < ids.index("books")
+
+
+def test_batch_delete_of_parent_plus_child_does_not_409(live_web):
+    client, _, api = live_web
+    plan = client.post("/api/delete/plan", data={"roots": ["books", "b1"]}).json()
+    r = client.post("/api/delete", data={"roots": ["books", "b1"], "ids": plan["ids"]})
+    assert r.status_code == 200 and r.json()["residue"] == []
+    assert [n.id for n in api.list_tree().entries] == ["mb", "loose"]
+
+
+def test_tree_page_has_search_sort_and_upload_here(web):
+    html = web[0].get("/tree").text
+    assert 'id="search"' in html and 'id="sort"' in html
+    assert "传到这里" in html and "/api/upload" in html
+    assert "node.children.length" in html  # 目录行的直接子项数
+    assert "/api/download/" in html

@@ -6,6 +6,8 @@ api 层已经有两道通用闸（信箱断言、删除白名单）。这一层�
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from .api import RmClient
 from .models import (
     Document,
@@ -49,6 +51,25 @@ def check_move(tree: Tree, node_id: str, parent_id: str) -> None:
     check_not_mailbox(tree, parent_id)
     if parent_id and is_descendant(tree.entries, node_id, parent_id):
         raise ValueError(f"refusing to move {node_id} into itself or its own subtree")
+
+
+def plan_delete_many(tree: Tree, node_ids: Iterable[str]) -> list[dict]:
+    """把多棵子树合并成一份删除计划。
+
+    去重：选了父又选了子，只算一棵（否则子项会在计划里出现两次，确认清单和
+    白名单都会对不上）。合并后按**全树深度**倒序——各棵树的相对深度不可比。
+    """
+    node_ids = list(dict.fromkeys(node_ids))
+    roots = [
+        i for i in node_ids
+        if not any(other != i and is_descendant(tree.entries, other, i) for other in node_ids)
+    ]
+    seen: dict[str, dict] = {}
+    for root in roots:
+        for item in plan_delete(tree, root):
+            seen.setdefault(item["id"], item)
+    depth = {node.id: len(path) for path, node in walk(tree.entries)}
+    return sorted(seen.values(), key=lambda i: depth.get(i["id"], 0), reverse=True)
 
 
 def plan_delete(tree: Tree, node_id: str) -> list[dict]:
@@ -113,14 +134,15 @@ def move(client: RmClient, node_id: str, parent_id: str) -> None:
     client.move(node_id, parent_id, name=None, entries=tree.entries)
 
 
-def delete_subtree(client: RmClient, node_id: str, expected_ids: list[str]) -> dict:
-    """删整棵子树：重算计划 → 与用户确认过的清单比对 → 先深后浅删 → 立即复查。
+def delete_subtrees(client: RmClient, node_ids: list[str], expected_ids: list[str]) -> dict:
+    """删若干棵子树：重算计划 → 与用户确认过的清单比对 → 先深后浅删 → 立即复查。
 
     白名单用的是**服务端此刻重算出来的那份**，expected_ids 只用来比对；对不上就
-    抛 TreeChanged，让用户重新看一遍再确认。
+    抛 TreeChanged，让用户重新看一遍再确认。合并去重的规则两边必须一致，否则
+    父子同选的批量删除每次都会 409。
     """
     tree = client.list_tree()
-    plan = plan_delete(tree, node_id)
+    plan = plan_delete_many(tree, node_ids)
     ids = [item["id"] for item in plan]
     added = sorted(set(ids) - set(expected_ids))
     removed = sorted(set(expected_ids) - set(ids))

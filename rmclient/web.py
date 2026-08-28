@@ -21,9 +21,9 @@ from .manage import (
     TreeChanged,
     check_resurrection,
     create_folder,
-    delete_subtree,
+    delete_subtrees,
     move,
-    plan_delete,
+    plan_delete_many,
     rename,
 )
 from .models import Folder, PathError, Tree, find, mailbox_ids, walk
@@ -137,15 +137,18 @@ def api_move(
 
 
 @app.post("/api/delete/plan")
-def api_delete_plan(id: str = Form(...), client: RmClient = Depends(get_client)) -> dict:
-    """这一刀会删掉的每一项，先深后浅。对话框必须把整棵子树摊给用户看。"""
-    items = _manage(lambda: plan_delete(client.list_tree(), id))
+def api_delete_plan(roots: list[str] = Form(...), client: RmClient = Depends(get_client)) -> dict:
+    """这一刀会删掉的每一项，先深后浅。对话框必须把整棵子树摊给用户看。
+
+    roots 是用户选中的若干项（单删就是 1 个）；父子同选会合并成一棵。
+    """
+    items = _manage(lambda: plan_delete_many(client.list_tree(), roots))
     return {"items": items, "ids": [i["id"] for i in items]}
 
 
 @app.post("/api/delete")
 def api_delete(
-    id: str = Form(...),
+    roots: list[str] = Form(...),
     ids: list[str] = Form(...),
     client: RmClient = Depends(get_client),
     journal: DeletionJournal = Depends(get_journal),
@@ -155,7 +158,7 @@ def api_delete(
 
     删成功后把每一项落到记录文件——复活要等设备同步一轮，那会儿页面早刷新过了。"""
     try:
-        result = _manage(lambda: delete_subtree(client, id, ids))
+        result = _manage(lambda: delete_subtrees(client, roots, ids))
         deleted = set(result["deleted"])
         journal.append(item for item in result["items"] if item["id"] in deleted)
         return {"deleted": result["deleted"], "residue": result["residue"]}
