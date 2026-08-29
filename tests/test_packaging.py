@@ -69,3 +69,14 @@ def test_the_wheel_does_not_ship_tests_or_local_state(wheel_names):
 def test_the_console_script_is_declared(wheel_names):
     entry = [n for n in wheel_names if n.endswith("entry_points.txt")]
     assert entry, "wheel 里没有 entry_points.txt，`rmclient` 命令就不存在"
+
+
+def test_readme_links_are_absolute():
+    # README.md 是 PyPI 的 long_description，在 pypi.org 域名下渲染——
+    # 相对链接和相对图片在那儿全部是死链（twine check 不查这个）。
+    import re
+
+    text = (REPO / "README.md").read_text()
+    refs = re.findall(r"\]\(([^)\s]+)\)", text)
+    bad = [r for r in refs if not r.startswith(("http://", "https://", "#", "mailto:"))]
+    assert bad == [], f"relative link(s) would break on PyPI: {bad}"

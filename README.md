@@ -5,7 +5,7 @@ server: push books to your reMarkable, organise the document tree, preview
 notebooks, download originals, and find duplicates — all from your laptop,
 talking to your cloud over its `/ui/api` endpoints.
 
-*[中文版](README.zh-CN.md)*
+*[中文版](https://github.com/xxxxxthhh/rmclient/blob/main/README.zh-CN.md)*
 
 Nothing runs on the server and nothing is installed on the device: rmclient is
 just another API consumer. Everything is a single Python process; the web UI is
@@ -14,15 +14,15 @@ offline.
 
 **Status:** works against rmfakecloud **v0.0.31**, which is the only version it
 has been tested on. The endpoint contract and its pitfalls are documented in
-[`spike/REPORT.md`](spike/REPORT.md).
+[`spike/REPORT.md`](https://github.com/xxxxxthhh/rmclient/blob/main/spike/REPORT.md).
 
 ## What you get
 
-![The document tree](docs/screenshots/tree.jpg)
+![The document tree](https://raw.githubusercontent.com/xxxxxthhh/rmclient/main/docs/screenshots/tree.jpg)
 
 | Push | Notebook preview |
 |---|---|
-| ![Push page](docs/screenshots/push.jpg) | ![Preview page](docs/screenshots/preview.jpg) |
+| ![Push page](https://raw.githubusercontent.com/xxxxxthhh/rmclient/main/docs/screenshots/push.jpg) | ![Preview page](https://raw.githubusercontent.com/xxxxxthhh/rmclient/main/docs/screenshots/preview.jpg) |
 
 | Page | What it does |
 |---|---|
@@ -30,7 +30,7 @@ has been tested on. The endpoint contract and its pitfalls are documented in
 | `/tree` | The whole document tree: search, sort, create/rename/move/delete (single or multi-select), upload into any folder, download originals (or the whole `.rmdoc` package — that is where device annotations live), duplicate report. |
 | `/preview/<id>` | Render a notebook's pages as SVG, page through them, export the whole notebook as PDF. |
 
-The CLI covers pushing:
+The CLI also works without the browser:
 
 ```bash
 rmclient push book.epub                    # into the root
@@ -144,7 +144,7 @@ per-browser choice — nothing on the server changes.
 
 ### Adding a language
 
-Everything lives in [`rmclient/pages/i18n.js`](rmclient/pages/i18n.js) — one
+Everything lives in [`rmclient/pages/i18n.js`](https://github.com/xxxxxthhh/rmclient/blob/main/rmclient/pages/i18n.js) — one
 file, no build step:
 
 1. Copy the whole `"en"` block inside `STRINGS`, rename the key to your BCP-47
@@ -174,7 +174,7 @@ Nested folders with the same name are not locked — only the root-level one is.
 ## Safety notes
 
 These come out of real testing against a live server; the details, with
-evidence, are in [`spike/REPORT.md`](spike/REPORT.md).
+evidence, are in [`spike/REPORT.md`](https://github.com/xxxxxthhh/rmclient/blob/main/spike/REPORT.md).
 
 - **Deletion is permanent and reaches the device.** There is no trash on the
   server side of this operation: a delete removes the document and the device
@@ -206,7 +206,7 @@ evidence, are in [`spike/REPORT.md`](spike/REPORT.md).
 ## API contract at a glance
 
 What rmclient relies on, and the trap attached to each endpoint. Full evidence
-in [`spike/REPORT.md`](spike/REPORT.md).
+in [`spike/REPORT.md`](https://github.com/xxxxxthhh/rmclient/blob/main/spike/REPORT.md).
 
 | Operation | Endpoint | The catch |
 |---|---|---|
@@ -240,7 +240,7 @@ in [`spike/REPORT.md`](spike/REPORT.md).
 ## How it got here
 
 Each round was verified against a live server before the next one started; the
-contract findings live in [`spike/REPORT.md`](spike/REPORT.md).
+contract findings live in [`spike/REPORT.md`](https://github.com/xxxxxthhh/rmclient/blob/main/spike/REPORT.md).
 
 | Round | What landed |
 |---|---|
@@ -307,4 +307,4 @@ a temporary `rmclient-spike-<random>` folder and clean up after themselves.
 
 ## License
 
-MIT licensed — see [LICENSE](LICENSE).
+MIT licensed — see [LICENSE](https://github.com/xxxxxthhh/rmclient/blob/main/LICENSE).

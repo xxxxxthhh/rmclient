@@ -5,13 +5,43 @@ on:
     types: [published]
 
 jobs:
+  # 构建与测试不持有任何发布权限（PyPA 推荐边界）：
+  # 门禁 = 非 prerelease + tag 与 pyproject 版本一致 + 全量测试 + wheel 冒烟。
+  test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v9
+      - name: Gate — tag matches project version, no prereleases
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          test "$PRERELEASE" = "false"
+          VERSION=$(python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          test "$TAG" = "v$VERSION"
+      - run: uv sync --locked
+      - run: uv run pytest -q
+      - run: uv build
+      - name: Smoke-test the built wheel
+        run: |
+          uv venv /tmp/smoke
+          VIRTUAL_ENV=/tmp/smoke uv pip install dist/*.whl
+          /tmp/smoke/bin/rmclient --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
   publish:
+    needs: test-build
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
-      id-token: write  # PyPI Trusted Publishing (OIDC)，全程无 token
+      id-token: write  # PyPI Trusted Publishing (OIDC)，只在这个纯上传 job 里持有
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv build
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1

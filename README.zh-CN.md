@@ -4,21 +4,21 @@
 推书到 reMarkable、整理文档树、预览笔记、取回原件、查重名——全部在自己电脑上
 完成，通过服务器的 `/ui/api` 端点通信。
 
-*[English](README.md)*
+*[English](https://github.com/xxxxxthhh/rmclient/blob/main/README.md)*
 
 服务端一行不动，设备端什么也不装：rmclient 只是它的又一个 API 消费者。整个东西
 是一个 Python 进程，Web 界面是纯 HTML/CSS/JS，无构建链、无外部资源，离线可用。
 
 **状态**：在 rmfakecloud **v0.0.31** 上实测可用，也只在这个版本上测过。端点契约
-与各种坑记在 [`spike/REPORT.md`](spike/REPORT.md)。
+与各种坑记在 [`spike/REPORT.md`](https://github.com/xxxxxthhh/rmclient/blob/main/spike/REPORT.md)。
 
 ## 有什么
 
-![文档树](docs/screenshots/tree.jpg)
+![文档树](https://raw.githubusercontent.com/xxxxxthhh/rmclient/main/docs/screenshots/tree.jpg)
 
 | 推书 | 笔记预览 |
 |---|---|
-| ![推书页](docs/screenshots/push.jpg) | ![预览页](docs/screenshots/preview.jpg) |
+| ![推书页](https://raw.githubusercontent.com/xxxxxthhh/rmclient/main/docs/screenshots/push.jpg) | ![预览页](https://raw.githubusercontent.com/xxxxxthhh/rmclient/main/docs/screenshots/preview.jpg) |
 
 | 页面 | 干什么 |
 |---|---|
@@ -26,7 +26,7 @@
 | `/tree` | 整棵文档树：搜索、排序、新建/重命名/移动/删除（单个或多选）、往任意目录上传、下载原件（也可取整包 `.rmdoc`——设备端的批注在包里）、重名报告。 |
 | `/preview/<id>` | 把笔记逐页渲染成 SVG，翻页浏览，整本导出 PDF。 |
 
-CLI 负责推书：
+不开浏览器也可以用 CLI：
 
 ```bash
 rmclient push book.epub                    # 传到根级
@@ -126,7 +126,7 @@ Web 界面自带**英文（默认）与中文**，语言是每个浏览器自己
 
 ### 加一门语言
 
-全部在 [`rmclient/pages/i18n.js`](rmclient/pages/i18n.js) 一个文件里，没有构建步骤：
+全部在 [`rmclient/pages/i18n.js`](https://github.com/xxxxxthhh/rmclient/blob/main/rmclient/pages/i18n.js) 一个文件里，没有构建步骤：
 
 1. 把 `STRINGS` 里整个 `"en"` 块复制一份，键改成你的 BCP-47 基础标签
    （`"de"`、`"ja"`……），再翻译值。键一个都不能少，`{大括号}` 占位符原样保留。
@@ -151,7 +151,7 @@ Web 界面自带**英文（默认）与中文**，语言是每个浏览器自己
 
 ## 安全须知
 
-下面这些都是对真实服务器实测出来的，证据在 [`spike/REPORT.md`](spike/REPORT.md)。
+下面这些都是对真实服务器实测出来的，证据在 [`spike/REPORT.md`](https://github.com/xxxxxthhh/rmclient/blob/main/spike/REPORT.md)。
 
 - **删除是硬删，而且会传到设备上。** 这个操作在服务端没有回收站：删掉之后设备
   下次同步就把本地那份也丢掉。rmclient 在你确认之前会把整棵将被删除的子树列
@@ -176,7 +176,7 @@ Web 界面自带**英文（默认）与中文**，语言是每个浏览器自己
 ## 契约速查
 
 rmclient 依赖的端点，以及每个端点各自的坑。完整证据在
-[`spike/REPORT.md`](spike/REPORT.md)。
+[`spike/REPORT.md`](https://github.com/xxxxxthhh/rmclient/blob/main/spike/REPORT.md)。
 
 | 操作 | 端点 | 关键坑 |
 |---|---|---|
@@ -205,7 +205,7 @@ rmclient 依赖的端点，以及每个端点各自的坑。完整证据在
 ## 一路是怎么走过来的
 
 每一轮都对真实服务器验证过才开下一轮；契约结论都在
-[`spike/REPORT.md`](spike/REPORT.md)。
+[`spike/REPORT.md`](https://github.com/xxxxxthhh/rmclient/blob/main/spike/REPORT.md)。
 
 | 阶段 | 做成了什么 |
 |---|---|
@@ -271,4 +271,4 @@ uv run pytest        # 离线测试，全程不碰真实服务器
 
 ## License
 
-MIT 许可证——见 [LICENSE](LICENSE)。
+MIT 许可证——见 [LICENSE](https://github.com/xxxxxthhh/rmclient/blob/main/LICENSE)。

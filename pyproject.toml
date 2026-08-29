@@ -1,6 +1,6 @@
 [project]
 name = "rmclient"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local web UI + CLI for self-hosted rmfakecloud: push books to your reMarkable, manage the document tree, preview notebooks"
 readme = "README.md"
 license = "MIT"
@@ -23,6 +23,7 @@ dev = [
 [project.urls]
 Repository = "https://github.com/xxxxxthhh/rmclient"
 Issues = "https://github.com/xxxxxthhh/rmclient/issues"
+Changelog = "https://github.com/xxxxxthhh/rmclient/releases"
 
 [project.scripts]
 rmclient = "rmclient.cli:main"
