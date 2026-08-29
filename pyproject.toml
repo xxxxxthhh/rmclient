@@ -1,7 +1,10 @@
 [project]
 name = "rmclient"
-version = "0.1.0"
+version = "0.2.0"
+description = "Local web UI + CLI for self-hosted rmfakecloud: push books to your reMarkable, manage the document tree, preview notebooks"
+readme = "README.md"
 license = "MIT"
+keywords = ["remarkable", "rmfakecloud", "remarkable-tablet", "self-hosted"]
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.141.1",
@@ -16,6 +19,10 @@ dev = [
     "httpx>=0.28.1",
     "pytest>=9.1.1",
 ]
+
+[project.urls]
+Repository = "https://github.com/xxxxxthhh/rmclient"
+Issues = "https://github.com/xxxxxthhh/rmclient/issues"
 
 [project.scripts]
 rmclient = "rmclient.cli:main"
