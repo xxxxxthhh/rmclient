@@ -79,10 +79,6 @@ uvx rmclient setup           # point it at your rmfakecloud server
 uvx rmclient serve --open    # open your own library in the browser
 ```
 
-> **Not on PyPI yet.** Those three commands work *after the PyPI release*. Until
-> then, run rmclient from a clone — see [Development](#development). The commands
-> themselves are identical apart from the `uv run` prefix.
-
 `setup` asks for your server URL, e-mail and password, writes them to
 `~/.config/rmclient/config.toml` (the password goes to its own file, mode 600),
 and then signs in for real and reports how many entries your root holds — so you
@@ -286,7 +282,7 @@ tests/          offline test suite
 
 ## Development
 
-Running from a clone — and the only way to run it before the PyPI release:
+Running from a clone:
 
 ```bash
 git clone https://github.com/xxxxxthhh/rmclient && cd rmclient

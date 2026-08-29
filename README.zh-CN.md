@@ -70,9 +70,6 @@ uvx rmclient setup           # 指向你自己的 rmfakecloud
 uvx rmclient serve --open    # 在浏览器里打开自己的书库
 ```
 
-> **还没发到 PyPI。** 上面三条要**等 PyPI 发布之后**才能用。在那之前请从克隆
-> 的仓库里跑，见 [开发](#开发)——除了前缀 `uv run`，命令本身一模一样。
-
 `setup` 问你服务器地址、邮箱、密码，写进 `~/.config/rmclient/config.toml`
 （密码单独一个文件，权限 600），然后**真登录一次**并报告根级有多少条目——
 配得对不对当场就知道，不用等到第一次上传才发现。
@@ -250,7 +247,7 @@ tests/          离线测试
 
 ## 开发
 
-从克隆的仓库里跑——PyPI 发布之前也只有这一条路：
+从克隆的仓库里跑：
 
 ```bash
 git clone https://github.com/xxxxxthhh/rmclient && cd rmclient
