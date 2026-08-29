@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v9
+      - uses: astral-sh/setup-uv@v10.0.1
       - name: Gate — tag matches project version, no prereleases
         env:
           TAG: ${{ github.event.release.tag_name }}
